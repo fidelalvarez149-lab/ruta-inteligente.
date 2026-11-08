@@ -1,164 +1,355 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#123b5d">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#145a8d">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>Ruta Inteligente</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
-:root{--navy:#123b5d;--blue:#1769aa;--bg:#f2f6fa;--text:#172b3a;--muted:#607384}
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
-header{background:linear-gradient(135deg,#123b5d,#1769aa);color:white;padding:22px 18px 25px}
-header h1{margin:0;font-size:25px}header p{margin:6px 0 0;opacity:.9;font-size:14px}
-main{max-width:760px;margin:auto;padding:14px}
-.card{background:white;border-radius:16px;padding:16px;margin:0 0 14px;box-shadow:0 3px 14px #123b5d12}
-label{display:block;font-weight:650;margin:12px 0 6px}
-textarea,input,select{width:100%;border:1px solid #cbd7e1;border-radius:10px;padding:12px;font:inherit;background:white;color:var(--text)}
-textarea{min-height:150px;resize:vertical;line-height:1.5}
-.hint{font-size:12px;color:var(--muted);line-height:1.45;margin:7px 0}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-button,.button{border:0;border-radius:11px;padding:13px 15px;font:inherit;font-weight:700;cursor:pointer}
-.primary{background:var(--blue);color:white;width:100%;margin-top:14px}
-.secondary{background:#e7f0f8;color:var(--navy);width:100%;margin-top:9px}
-button:disabled{opacity:.55;cursor:wait}
-#status{white-space:pre-line;font-size:14px;margin-top:12px;color:var(--muted)}
-#map{height:360px;border-radius:14px;overflow:hidden;background:#e6edf2}
-#results{padding-left:22px;margin-bottom:0}#results li{padding:5px 0}
-.pill{display:inline-block;background:#e7f0f8;color:var(--navy);border-radius:20px;padding:5px 9px;font-size:12px;font-weight:700}
-.warning{background:#fff7df;border-left:4px solid #e3a600;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.45}
-footer{text-align:center;color:var(--muted);font-size:11px;padding:10px 18px 24px}
-@media(max-width:480px){.row{grid-template-columns:1fr}#map{height:320px}}
+:root{--azul:#145a8d;--azul2:#0f4c7a;--fondo:#f1f5f9;--texto:#10243a;--gris:#5b6b7c;--borde:#cbd5e1}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--fondo);color:var(--texto);padding-bottom:env(safe-area-inset-bottom)}
+header{background:linear-gradient(135deg,#0f4c7a,#1a6aa8);color:#fff;padding:calc(18px + env(safe-area-inset-top)) 18px 22px}
+header h1{margin:0 0 6px;font-size:1.9rem}
+header p{margin:0;font-size:1.05rem;opacity:.95}
+main{padding:16px;max-width:720px;margin:0 auto}
+.card{background:#fff;border-radius:22px;padding:20px;margin-bottom:18px;box-shadow:0 2px 10px rgba(0,0,0,.07)}
+.chip{display:inline-block;background:#e6eef7;color:var(--azul2);font-weight:600;padding:9px 16px;border-radius:999px;font-size:.95rem;margin-bottom:14px}
+label{display:block;font-weight:700;font-size:1.2rem;margin:8px 0 10px}
+select,textarea{width:100%;font:inherit;font-size:1.1rem;padding:14px;border:1.5px solid var(--borde);border-radius:16px;background:#fff;color:var(--texto)}
+textarea{min-height:150px;line-height:1.6;resize:vertical}
+.hint{color:var(--gris);font-size:.95rem;line-height:1.5;margin:12px 0 18px}
+button{font:inherit;cursor:pointer}
+.btn{display:block;width:100%;background:var(--azul);color:#fff;border:0;border-radius:16px;padding:16px;font-size:1.15rem;font-weight:700}
+.btn:disabled{opacity:.6}
+.btn.sec{background:#e6eef7;color:var(--azul2);margin-top:10px;font-size:1rem;padding:13px}
+#estado{margin-top:14px;font-size:1.05rem;color:var(--gris);line-height:1.4;white-space:pre-line}
+#estado.err{color:#b42318}
+#estado.ok{color:#067647}
+h2{margin:0 0 14px;font-size:1.6rem}
+#mapa{height:340px;border-radius:16px;overflow:hidden;z-index:0}
+#resumen{font-weight:600;margin:0 0 12px;color:var(--azul2)}
+ol{list-style:none;margin:0;padding:0}
+.parada{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid #e5eaf0}
+.parada:last-child{border:0}
+.num{flex:0 0 34px;height:34px;border-radius:50%;background:var(--azul);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center}
+.num.inicio{background:#067647}
+.info{flex:1;min-width:0}
+.info b{display:block;font-size:1.05rem}
+.info small{color:var(--gris);display:block;line-height:1.35}
+.acc{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.acc a{font-size:.9rem;text-decoration:none;background:#e6eef7;color:var(--azul2);padding:7px 12px;border-radius:10px;font-weight:600}
+.pin{background:var(--azul);color:#fff;border:2px solid #fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;box-shadow:0 1px 5px rgba(0,0,0,.4)}
+.pin.inicio{background:#067647}
+#instalar{display:none;margin-bottom:18px;background:#067647}
+.fallo{color:#b42318;font-size:.95rem;margin-top:10px}
 </style>
 </head>
 <body>
-<header><h1>🗺️ Ruta Inteligente</h1><p>Ordena tus paradas comenzando desde tu ubicación actual.</p></header>
+<header>
+  <h1>🗺️ Ruta Inteligente</h1>
+  <p>Ordena tus paradas comenzando desde tu ubicación actual.</p>
+</header>
 <main>
-<section class="card">
-  <div class="pill">Nicaragua · Android · GPS</div>
-  <label for="vehicle">¿En qué vehículo viajarás?</label>
-  <select id="vehicle"><option value="car">🚗 Automóvil</option><option value="motorcycle">🏍️ Motocicleta</option></select>
-  <label for="addresses">Escribe las direcciones (una por línea)</label>
-  <textarea id="addresses" placeholder="Ejemplo:&#10;Metrocentro, Managua, Nicaragua&#10;Hospital Vivian Pellas, Managua, Nicaragua&#10;Mercado Roberto Huembes, Managua, Nicaragua"></textarea>
-  <p class="hint">Escribe referencias lo más completas posible: lugar, barrio, municipio y departamento. Puedes ingresar hasta 10 paradas.</p>
-  <button class="primary" id="go">📍 Usar mi ubicación y organizar ruta</button>
-  <div id="status" role="status">Primero permite el acceso a la ubicación cuando el teléfono lo solicite.</div>
-</section>
-<section class="card">
-  <h3 style="margin:0 0 10px">Mapa del recorrido</h3>
-  <div id="map"></div>
-</section>
-<section class="card" id="summary" hidden>
-  <h3 style="margin:0 0 8px">Orden recomendado</h3>
-  <p id="distance" class="hint"></p>
-  <ol id="results"></ol>
-  <button class="primary" id="openMaps">Abrir recorrido en Google Maps</button>
-  <p class="hint">Google Maps puede ajustar el recorrido según el tráfico y las condiciones actuales.</p>
-</section>
-<section class="card">
-  <div class="warning"><b>Importante:</b> esta primera versión usa servicios públicos de OpenStreetMap, Nominatim y OSRM. La ruta de automóvil sirve como aproximación también para motocicleta; todavía no aplica restricciones específicas para motos ni tráfico en tiempo real. Para uso intensivo o comercial habrá que configurar un proveedor de mapas/rutas con capacidad y condiciones de servicio adecuadas.</div>
-</section>
+  <button id="instalar" class="btn">📲 Instalar app en el teléfono</button>
+
+  <section class="card">
+    <span class="chip">Nicaragua · Android · GPS</span>
+    <label for="vehiculo">¿En qué vehículo viajarás?</label>
+    <select id="vehiculo">
+      <option value="moto">🏍️ Motocicleta</option>
+      <option value="carro">🚗 Carro</option>
+      <option value="camioneta">🛻 Camioneta</option>
+      <option value="camion">🚚 Camión</option>
+      <option value="bici">🚲 Bicicleta</option>
+      <option value="pie">🚶 A pie</option>
+    </select>
+
+    <label for="direcciones" style="margin-top:22px">Escribe las direcciones (una por línea)</label>
+    <textarea id="direcciones" placeholder="Metro Centro, Managua&#10;Mercado Oriental, Managua"></textarea>
+    <p class="hint">Escribe referencias lo más completas posible: lugar, barrio, municipio y departamento. Puedes ingresar hasta 10 paradas.</p>
+
+    <button id="btnGPS" class="btn">📍 Usar mi ubicación y organizar ruta</button>
+    <button id="btnSinGPS" class="btn sec">Organizar sin GPS (empezar en la primera dirección)</button>
+    <div id="estado"></div>
+    <div id="fallos" class="fallo"></div>
+  </section>
+
+  <section class="card">
+    <h2>Mapa del recorrido</h2>
+    <div id="mapa"></div>
+  </section>
+
+  <section class="card" id="cardResultado" style="display:none">
+    <h2>Orden de paradas</h2>
+    <p id="resumen"></p>
+    <ol id="lista"></ol>
+    <div class="acc" style="margin-top:14px">
+      <a id="verGoogle" href="#" target="_blank" rel="noopener">Abrir ruta completa en Google Maps</a>
+    </div>
+  </section>
 </main>
-<footer>Ruta Inteligente · Primera versión de prueba</footer>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const statusEl=document.getElementById('status'), go=document.getElementById('go');
-const map=L.map('map').setView([12.1364,-86.2514],12);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);
-let markers=[],routeLayer=null,startPoint=null,orderedStops=[];
-function status(t){statusEl.textContent=t}
-function clearMap(){markers.forEach(m=>map.removeLayer(m));markers=[];if(routeLayer){map.removeLayer(routeLayer);routeLayer=null}}
-function getPosition(){return new Promise((resolve,reject)=>{
- if(!navigator.geolocation){reject(new Error('Este navegador no permite GPS.'));return}
- navigator.geolocation.getCurrentPosition(
-  p=>resolve([p.coords.longitude,p.coords.latitude]),
-  e=>reject(new Error(e.code===1?'Permite el acceso a la ubicación en los ajustes del navegador.':e.code===2?'No se pudo determinar tu ubicación. Activa el GPS.':'Se agotó el tiempo de espera del GPS.')),
-  {enableHighAccuracy:true,timeout:20000,maximumAge:30000});
-})}
-const wait=ms=>new Promise(r=>setTimeout(r,ms));
-async function geocode(q){
- const url='https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=ni&q='+encodeURIComponent(q);
- const res=await fetch(url,{headers:{'Accept-Language':'es'}});
- if(!res.ok)throw new Error('No se pudo buscar: '+q);
- const data=await res.json();
- if(!data.length)throw new Error('No encontré esta dirección: '+q+'. Prueba agregando barrio o municipio.');
- return {name:q,lon:+data[0].lon,lat:+data[0].lat,display:data[0].display_name};
+const $ = id => document.getElementById(id);
+const MAX = 10;
+const PERFILES = {
+  moto:      {osrm:'car',  gmaps:'driving',   vel:35},
+  carro:     {osrm:'car',  gmaps:'driving',   vel:35},
+  camioneta: {osrm:'car',  gmaps:'driving',   vel:32},
+  camion:    {osrm:'car',  gmaps:'driving',   vel:28},
+  bici:      {osrm:'bike', gmaps:'bicycling', vel:14},
+  pie:       {osrm:'foot', gmaps:'walking',   vel:5}
+};
+const CENTRO = [12.136, -86.251]; // Managua
+
+/* ---------- persistencia ---------- */
+try {
+  $('direcciones').value = localStorage.getItem('ri_dirs') || '';
+  $('vehiculo').value = localStorage.getItem('ri_veh') || 'moto';
+} catch(e){}
+$('direcciones').addEventListener('input', () => { try{localStorage.setItem('ri_dirs', $('direcciones').value)}catch(e){} });
+$('vehiculo').addEventListener('change', () => { try{localStorage.setItem('ri_veh', $('vehiculo').value)}catch(e){} });
+
+/* ---------- mapa ---------- */
+const mapa = L.map('mapa', {zoomControl:true}).setView(CENTRO, 12);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19, attribution: '© OpenStreetMap'
+}).addTo(mapa);
+let capa = L.layerGroup().addTo(mapa);
+
+/* ---------- utilidades ---------- */
+function estado(msg, tipo){ const e=$('estado'); e.textContent=msg; e.className=tipo||''; }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function haversine(a, b){
+  const R=6371000, rad=x=>x*Math.PI/180;
+  const dLat=rad(b.lat-a.lat), dLon=rad(b.lon-a.lon);
+  const h=Math.sin(dLat/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
 }
-function haversine(a,b){
- const R=6371000,rad=x=>x*Math.PI/180,dLat=rad(b.lat-a.lat),dLon=rad(b.lon-a.lon);
- const x=Math.sin(dLat/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLon/2)**2;
- return 2*R*Math.asin(Math.sqrt(x));
+function fmtDist(m){ return m>=1000 ? (m/1000).toFixed(1)+' km' : Math.round(m)+' m'; }
+function fmtTiempo(s){
+  const m=Math.round(s/60);
+  if(m<60) return m+' min';
+  return Math.floor(m/60)+' h '+(m%60)+' min';
 }
-function optimizeNearest(start,stops){
- let remaining=stops.slice(),current={lon:start[0],lat:start[1]},out=[];
- while(remaining.length){
-  let best=0,dist=Infinity;
-  remaining.forEach((s,i)=>{const d=haversine(current,s);if(d<dist){dist=d;best=i}});
-  current=remaining.splice(best,1)[0];out.push(current);
- }
- // Mejora sencilla 2-opt usando distancia en línea recta.
- let improved=true,passes=0;
- while(improved&&passes++<30){improved=false;
-  for(let i=0;i<out.length-1;i++)for(let k=i+1;k<out.length;k++){
-   const prev=i===0?{lon:start[0],lat:start[1]}:out[i-1],a=out[i],b=out[k],next=k===out.length-1?null:out[k+1];
-   const old=haversine(prev,a)+(next?haversine(b,next):0);
-   const neu=haversine(prev,b)+(next?haversine(a,next):0);
-   if(neu+5<old){out.splice(i,k-i+1,...out.slice(i,k+1).reverse());improved=true}
-  }
- }
- return out;
+async function fetchJSON(url, ms=15000){
+  const c = new AbortController(); const t = setTimeout(()=>c.abort(), ms);
+  try{
+    const r = await fetch(url, {signal:c.signal});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return await r.json();
+  } finally { clearTimeout(t); }
 }
-async function roadRoute(coords){
- const path=coords.map(c=>c[0]+','+c[1]).join(';');
- const url='https://router.project-osrm.org/route/v1/driving/'+path+'?overview=full&geometries=geojson&steps=false';
- const res=await fetch(url);if(!res.ok)throw new Error('El servicio de rutas no respondió.');
- const data=await res.json();if(data.code!=='Ok'||!data.routes?.length)throw new Error('No se pudo calcular una ruta por carretera para todas las paradas.');
- return data.routes[0];
-}
-go.addEventListener('click',async()=>{
- const addresses=document.getElementById('addresses').value.split('\n').map(s=>s.trim()).filter(Boolean);
- if(!addresses.length){status('Escribe al menos una dirección.');return}
- if(addresses.length>10){status('En esta versión puedes ingresar hasta 10 direcciones.');return}
- go.disabled=true;document.getElementById('summary').hidden=true;clearMap();
- try{
-  status('Obteniendo tu ubicación GPS…');
-  startPoint=await getPosition();
-  map.setView([startPoint[1],startPoint[0]],14);
-  const startMarker=L.marker([startPoint[1],startPoint[0]]).addTo(map).bindPopup('📍 Punto de partida: tu ubicación').openPopup();markers.push(startMarker);
-  const stops=[];
-  for(let i=0;i<addresses.length;i++){
-   status('Buscando dirección '+(i+1)+' de '+addresses.length+': '+addresses[i]);
-   stops.push(await geocode(addresses[i]));
-   if(i<addresses.length-1)await wait(1100);
-  }
-  status('Organizando las paradas…');
-  orderedStops=optimizeNearest(startPoint,stops);
-  const coords=[startPoint,...orderedStops.map(s=>[s.lon,s.lat])];
-  status('Calculando el recorrido por carretera…');
-  const route=await roadRoute(coords);
-  routeLayer=L.geoJSON(route.geometry,{style:{color:'#1769aa',weight:6,opacity:.85}}).addTo(map);
-  orderedStops.forEach((s,i)=>{
-   const m=L.marker([s.lat,s.lon]).addTo(map).bindPopup('<b>Parada '+(i+1)+'</b><br>'+s.name);
-   markers.push(m);
+
+/* ---------- ubicación ---------- */
+function obtenerUbicacion(){
+  return new Promise((res, rej) => {
+    if(!navigator.geolocation) return rej(new Error('Este navegador no soporta ubicación.'));
+    navigator.geolocation.getCurrentPosition(
+      p => res({lat:p.coords.latitude, lon:p.coords.longitude, precision:p.coords.accuracy}),
+      err => {
+        const m = {
+          1:'Permite el acceso a la ubicación en los ajustes del navegador (Chrome → Configuración del sitio → Ubicación) y activa el GPS del teléfono.',
+          2:'No se pudo determinar tu ubicación. Activa el GPS y sal a un lugar abierto.',
+          3:'La ubicación tardó demasiado. Intenta de nuevo con el GPS activado.'
+        };
+        rej(new Error(m[err.code] || 'Error de ubicación.'));
+      },
+      {enableHighAccuracy:true, timeout:20000, maximumAge:30000}
+    );
   });
-  map.fitBounds(routeLayer.getBounds().pad(.12));
-  document.getElementById('results').innerHTML='';
-  orderedStops.forEach((s,i)=>{
-   const li=document.createElement('li');li.textContent=s.name;document.getElementById('results').appendChild(li);
+}
+
+/* ---------- geocodificación ---------- */
+function cacheGet(q){ try{ return JSON.parse(localStorage.getItem('ri_geo_'+q.toLowerCase())||'null'); }catch(e){return null;} }
+function cacheSet(q,v){ try{ localStorage.setItem('ri_geo_'+q.toLowerCase(), JSON.stringify(v)); }catch(e){} }
+
+async function geocodificar(texto){
+  const c = cacheGet(texto);
+  if(c) return c;
+  const conPais = /nicaragua/i.test(texto) ? texto : texto + ', Nicaragua';
+  let r = null;
+  // 1) Nominatim
+  try{
+    const u = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=ni&accept-language=es'
+      + '&viewbox=-86.60,12.35,-85.90,11.90&q=' + encodeURIComponent(conPais);
+    const j = await fetchJSON(u);
+    if(j.length) r = {lat:+j[0].lat, lon:+j[0].lon, nombre:j[0].display_name};
+  }catch(e){}
+  // 2) Photon (mejor para lugares/comercios)
+  if(!r){
+    try{
+      const u = 'https://photon.komoot.io/api/?limit=5&lat='+CENTRO[0]+'&lon='+CENTRO[1]
+        + '&q=' + encodeURIComponent(conPais);
+      const j = await fetchJSON(u);
+      const f = (j.features||[]).find(x => (x.properties.countrycode||'').toUpperCase()==='NI');
+      if(f){
+        const p=f.properties;
+        r = {lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0],
+             nombre:[p.name,p.street,p.district||p.city,p.state].filter(Boolean).join(', ')};
+      }
+    }catch(e){}
+  }
+  if(r) cacheSet(texto, r);
+  return r;
+}
+
+/* ---------- optimización ---------- */
+async function matrizTiempos(nodos, perfil){
+  const n = nodos.length;
+  try{
+    const coords = nodos.map(p=>p.lon+','+p.lat).join(';');
+    const j = await fetchJSON(`https://routing.openstreetmap.de/routed-${PERFILES[perfil].osrm}/table/v1/driving/${coords}?annotations=duration`);
+    if(j.durations && j.durations.every(f=>f.every(v=>v!==null))) return j.durations;
+  }catch(e){}
+  const v = PERFILES[perfil].vel*1000/3600;
+  return nodos.map(a=>nodos.map(b=>haversine(a,b)*1.35/v));
+}
+// Camino abierto con el primer nodo fijo: vecino más cercano + 2-opt
+function optimizar(D){
+  const n = D.length;
+  let ruta=[0], resto=new Set([...Array(n).keys()].slice(1));
+  while(resto.size){
+    const u=ruta[ruta.length-1]; let mejor=null, md=Infinity;
+    for(const v of resto) if(D[u][v]<md){md=D[u][v];mejor=v;}
+    ruta.push(mejor); resto.delete(mejor);
+  }
+  let mejora=true, iter=0;
+  while(mejora && iter++<200){
+    mejora=false;
+    for(let i=1;i<n-1;i++) for(let j=i+1;j<n;j++){
+      const a=ruta[i-1], b=ruta[i], c=ruta[j], d=j+1<n?ruta[j+1]:null;
+      const antes=D[a][b]+(d!==null?D[c][d]:0);
+      const desp =D[a][c]+(d!==null?D[b][d]:0);
+      if(desp<antes-1e-6){
+        ruta=[...ruta.slice(0,i), ...ruta.slice(i,j+1).reverse(), ...ruta.slice(j+1)];
+        mejora=true;
+      }
+    }
+  }
+  return ruta;
+}
+
+/* ---------- ruta en el mapa ---------- */
+async function trazar(orden, perfil){
+  try{
+    const coords = orden.map(p=>p.lon+','+p.lat).join(';');
+    const j = await fetchJSON(`https://routing.openstreetmap.de/routed-${PERFILES[perfil].osrm}/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`, 20000);
+    const r = j.routes[0];
+    return {geom:r.geometry.coordinates.map(c=>[c[1],c[0]]), dist:r.distance, dur:r.duration,
+            tramos:r.legs.map(l=>({dist:l.distance,dur:l.duration}))};
+  }catch(e){
+    const v=PERFILES[perfil].vel*1000/3600, tramos=[];
+    for(let i=1;i<orden.length;i++){const d=haversine(orden[i-1],orden[i])*1.35;tramos.push({dist:d,dur:d/v});}
+    return {geom:orden.map(p=>[p.lat,p.lon]), dist:tramos.reduce((s,t)=>s+t.dist,0),
+            dur:tramos.reduce((s,t)=>s+t.dur,0), tramos, aproximada:true};
+  }
+}
+
+function mostrar(orden, tr, perfil, conGPS){
+  capa.clearLayers();
+  L.polyline(tr.geom, {color:'#145a8d', weight:5, opacity:.85}).addTo(capa);
+  orden.forEach((p,i)=>{
+    const ini = i===0;
+    const html = `<div class="pin ${ini?'inicio':''}">${ini && conGPS ? '★' : i+(conGPS?0:1)}</div>`;
+    L.marker([p.lat,p.lon], {icon:L.divIcon({html, className:'', iconSize:[30,30], iconAnchor:[15,15]})})
+      .bindPopup(p.etiqueta).addTo(capa);
   });
-  document.getElementById('distance').textContent='Distancia aproximada por carretera: '+(route.distance/1000).toFixed(1)+' km · Tiempo estimado: '+Math.round(route.duration/60)+' min · '+(document.getElementById('vehicle').value==='motorcycle'?'Motocicleta':'Automóvil');
-  document.getElementById('summary').hidden=false;
-  document.getElementById('openMaps').onclick=()=>{
-   const dest=orderedStops[orderedStops.length-1];
-   const waypoints=orderedStops.slice(0,-1).map(s=>s.lat+','+s.lon).join('|');
-   let u='https://www.google.com/maps/dir/?api=1&origin='+startPoint[1]+','+startPoint[0]+'&destination='+dest.lat+','+dest.lon+'&travelmode=driving';
-   if(waypoints)u+='&waypoints='+encodeURIComponent(waypoints);
-   window.open(u,'_blank');
-  };
-  status('¡Ruta organizada! Revisa el orden de las paradas y el mapa.');
- }catch(e){status('No se pudo completar: '+e.message)}
- finally{go.disabled=false}
+  mapa.fitBounds(L.latLngBounds(tr.geom).pad(0.15));
+
+  $('cardResultado').style.display='block';
+  $('resumen').textContent = `${orden.length-(conGPS?1:0)} paradas · ${fmtDist(tr.dist)} · ${fmtTiempo(tr.dur)}`
+    + (tr.aproximada ? ' (estimado, sin conexión al servicio de rutas)' : '');
+  const ol = $('lista'); ol.innerHTML='';
+  orden.forEach((p,i)=>{
+    const li=document.createElement('li'); li.className='parada';
+    const inicio = i===0 && conGPS;
+    const n = conGPS ? i : i+1;
+    const tramo = i>0 ? tr.tramos[i-1] : null;
+    li.innerHTML = `<div class="num ${inicio?'inicio':''}">${inicio?'★':n}</div>
+      <div class="info"><b></b><small></small>
+      ${tramo?`<small>Desde la anterior: ${fmtDist(tramo.dist)} · ${fmtTiempo(tramo.dur)}</small>`:''}
+      ${inicio?'':`<div class="acc">
+        <a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}&travelmode=${PERFILES[perfil].gmaps}">Google Maps</a>
+        <a target="_blank" rel="noopener" href="https://waze.com/ul?ll=${p.lat},${p.lon}&navigate=yes">Waze</a></div>`}
+      </div>`;
+    li.querySelector('b').textContent = p.etiqueta;
+    li.querySelector('small').textContent = p.nombre || '';
+    ol.appendChild(li);
+  });
+  const pts = orden.map(p=>p.lat+','+p.lon);
+  let url = `https://www.google.com/maps/dir/?api=1&travelmode=${PERFILES[perfil].gmaps}&origin=${pts[0]}&destination=${pts[pts.length-1]}`;
+  if(pts.length>2) url += '&waypoints='+encodeURIComponent(pts.slice(1,-1).join('|'));
+  $('verGoogle').href = url;
+  $('cardResultado').scrollIntoView({behavior:'smooth'});
+}
+
+/* ---------- flujo principal ---------- */
+let ocupado=false;
+async function organizar(usarGPS){
+  if(ocupado) return;
+  const lineas = [...new Set($('direcciones').value.split('\n').map(s=>s.trim()).filter(Boolean))];
+  $('fallos').textContent='';
+  if(!lineas.length) return estado('Escribe al menos una dirección.', 'err');
+  if(lineas.length>MAX) return estado(`Máximo ${MAX} paradas. Tienes ${lineas.length}.`, 'err');
+  const perfil = $('vehiculo').value;
+  ocupado=true; $('btnGPS').disabled=$('btnSinGPS').disabled=true;
+  try{
+    let origen=null;
+    if(usarGPS){
+      estado('Obteniendo tu ubicación…');
+      origen = await obtenerUbicacion();
+      origen.etiqueta='Tu ubicación'; origen.nombre='Precisión ≈ '+Math.round(origen.precision)+' m';
+    }
+    const ok=[], fallos=[];
+    for(let i=0;i<lineas.length;i++){
+      estado(`Buscando direcciones… ${i+1}/${lineas.length}`);
+      const enCache = !!cacheGet(lineas[i]);
+      const g = await geocodificar(lineas[i]);
+      if(g) ok.push({...g, etiqueta:lineas[i]}); else fallos.push(lineas[i]);
+      if(!enCache && i<lineas.length-1) await sleep(1100); // límite de Nominatim
+    }
+    if(fallos.length) $('fallos').textContent = 'No encontradas (agrega barrio, municipio o departamento): ' + fallos.join(' · ');
+    if(!ok.length || (!origen && ok.length<2 && false)) throw new Error('No se encontró ninguna dirección.');
+    const nodos = origen ? [origen, ...ok] : ok;
+    if(nodos.length<2){
+      estado('Solo hay una parada y no hay punto de partida; usa tu ubicación.', 'err'); return;
+    }
+    estado('Calculando el mejor orden…');
+    const D = await matrizTiempos(nodos, perfil);
+    const idx = optimizar(D);
+    const orden = idx.map(i=>nodos[i]);
+    estado('Trazando la ruta…');
+    const tr = await trazar(orden, perfil);
+    mostrar(orden, tr, perfil, !!origen);
+    estado('Ruta lista ✔', 'ok');
+  }catch(e){
+    estado('No se pudo completar: ' + e.message, 'err');
+  }finally{
+    ocupado=false; $('btnGPS').disabled=$('btnSinGPS').disabled=false;
+  }
+}
+$('btnGPS').addEventListener('click', ()=>organizar(true));
+$('btnSinGPS').addEventListener('click', ()=>organizar(false));
+
+/* ---------- instalación PWA ---------- */
+let promptInstalar=null;
+window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); promptInstalar=e; $('instalar').style.display='block'; });
+$('instalar').addEventListener('click', async ()=>{
+  if(!promptInstalar) return;
+  promptInstalar.prompt(); await promptInstalar.userChoice;
+  promptInstalar=null; $('instalar').style.display='none';
 });
+window.addEventListener('appinstalled', ()=>{ $('instalar').style.display='none'; });
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>
 </html>
