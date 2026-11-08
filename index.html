@@ -52,6 +52,8 @@ ol{list-style:none;margin:0;padding:0}
 .pin.inicio{background:#067647}
 #instalar{display:none;margin-bottom:18px;background:#067647}
 .fallo{color:#b42318;font-size:.95rem;margin-top:10px}
+#btnVoz.on{background:#fde8e6;color:#b42318;animation:p 1.2s ease-in-out infinite}
+@keyframes p{50%{opacity:.6}}
 .chk{display:flex;align-items:center;gap:10px;font-size:1.05rem;margin:0 0 16px;font-weight:600}
 .chk input{width:22px;height:22px;flex:0 0 22px}
 #toast{display:none;position:fixed;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));background:#10243a;color:#fff;padding:14px 16px;border-radius:14px;z-index:9999;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 4px 16px rgba(0,0,0,.35)}
@@ -87,6 +89,8 @@ footer{text-align:center;color:var(--gris);font-size:.85rem;padding:0 16px 28px}
 
     <label for="direcciones" style="margin-top:22px">Escribe las direcciones (una por línea)</label>
     <textarea id="direcciones" placeholder="Metro Centro, Managua&#10;Mercado Oriental, Managua"></textarea>
+    <button id="btnVoz" type="button" class="btn sec" style="margin-top:10px">🎤 Dictar una dirección</button>
+    <div id="msgVoz" class="hint" style="margin:8px 0 0"></div>
     <p class="hint">Escribe referencias lo más completas posible: lugar, barrio, municipio y departamento. Puedes ingresar hasta 10 paradas.</p>
 
     <label class="chk"><input type="checkbox" id="regreso"> Volver al punto de partida al final</label>
@@ -101,6 +105,7 @@ footer{text-align:center;color:var(--gris);font-size:.85rem;padding:0 16px 28px}
   <section class="card">
     <h2>Mapa del recorrido</h2>
     <div id="mapa"></div>
+    <p id="msgMapa" class="hint" style="margin:12px 0 0">Si una parada no cayó en el lugar exacto, toca y arrastra su número en el mapa hasta el punto correcto.</p>
   </section>
 
   <section class="card" id="cardResultado" style="display:none">
@@ -127,7 +132,7 @@ footer{text-align:center;color:var(--gris);font-size:.85rem;padding:0 16px 28px}
     <div id="msgCompartir" class="hint" style="margin:10px 0 0"></div>
   </section>
 </main>
-<footer>Ruta Inteligente v2.4 · Mapas © OpenStreetMap</footer>
+<footer>Ruta Inteligente v2.6 · Mapas © OpenStreetMap</footer>
 <div id="toast"><span>Hay una versión nueva de la app.</span><button id="btnAct">Actualizar</button></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -157,6 +162,56 @@ $('btnLimpiar').addEventListener('click', () => {
 });
 $('direcciones').addEventListener('input', () => { try{localStorage.setItem('ri_dirs', $('direcciones').value)}catch(e){} });
 $('vehiculo').addEventListener('change', () => { try{localStorage.setItem('ri_veh', $('vehiculo').value)}catch(e){} });
+
+/* ---------- dictado por voz ---------- */
+(function(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const btn = $('btnVoz'), msg = $('msgVoz');
+  if(!SR){ btn.style.display='none'; return; }
+  let rec = null, activo = false;
+  function parar(){ activo=false; btn.classList.remove('on'); btn.textContent='🎤 Dictar una dirección'; }
+  btn.addEventListener('click', ()=>{
+    if(activo && rec){ rec.stop(); return; }
+    rec = new SR();
+    rec.lang = 'es-NI';
+    rec.interimResults = true;
+    rec.continuous = false;
+    rec.maxAlternatives = 1;
+    let final = '';
+    rec.onstart = ()=>{ activo=true; btn.classList.add('on'); btn.textContent='🎙️ Escuchando… toca para detener'; msg.textContent='Di la dirección, por ejemplo: "Rotonda El Güegüense, tres cuadras al lago".'; };
+    rec.onresult = e=>{
+      let interim='';
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        const t=e.results[i][0].transcript;
+        if(e.results[i].isFinal) final+=t; else interim+=t;
+      }
+      msg.textContent = '“' + (final+interim).trim() + '”';
+    };
+    rec.onerror = e=>{
+      const m = {
+        'not-allowed':'Permite el uso del micrófono en los ajustes del navegador o del teléfono.',
+        'service-not-allowed':'Permite el uso del micrófono en los ajustes del navegador o del teléfono.',
+        'no-speech':'No escuché nada. Toca el micrófono e inténtalo de nuevo.',
+        'audio-capture':'No se encontró un micrófono.',
+        'network':'El dictado necesita internet.',
+        'language-not-supported':'El idioma no está disponible en este dispositivo.'
+      };
+      msg.textContent = m[e.error] || 'No se pudo dictar (' + e.error + ').';
+      final='';
+    };
+    rec.onend = ()=>{
+      parar();
+      const t = final.trim().replace(/[.。]+$/,'');
+      if(t){
+        const ta = $('direcciones');
+        ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/,'') + '\n' : '') + t;
+        ta.dispatchEvent(new Event('input'));
+        msg.textContent = '✔ Agregada: ' + t + '. Revisa que se escribió bien; puedes corregirla con el teclado.';
+      }
+    };
+    try{ rec.start(); }catch(e){ msg.textContent='No se pudo iniciar el micrófono.'; parar(); }
+  });
+})();
 
 /* ---------- mapa ---------- */
 const mapa = L.map('mapa', {zoomControl:true}).setView(CENTRO, 12);
@@ -216,7 +271,53 @@ function obtenerUbicacion(){
 function cacheGet(q){ try{ return JSON.parse(localStorage.getItem('ri_geo_'+q.toLowerCase())||'null'); }catch(e){return null;} }
 function cacheSet(q,v){ try{ localStorage.setItem('ri_geo_'+q.toLowerCase(), JSON.stringify(v)); }catch(e){} }
 
+/* Referencias a la nicaragüense: "Rotonda el Güegüense 3 cuadras al lago y 1 abajo"
+   Convención de Managua: lago = norte, montaña = sur, arriba = este, abajo = oeste. 1 cuadra ≈ 84 m (100 varas). */
+const NUMEROS = {un:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,diez:10,media:0.5};
+function parsearReferencia(texto){
+  const re = /(\d+(?:[.,]\d+)?|un|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|media)\s*(cuadras?|varas?|metros?|mts?)?\s*(?:y\s+)?(?:al|hacia el|hacia|a la|para el|para)?\s*(norte|sur|este|oeste|lago|monta[ñn]a|arriba|abajo|oriente|poniente)\b/gi;
+  let m, primero=null, dN=0, dE=0; const partes=[];
+  while((m = re.exec(texto))){
+    const antes = texto.slice(0, m.index);
+    if(/km\.?\s*$/i.test(antes)) continue;               // "km 10 al sur" no es una distancia en cuadras
+    if(!primero) primero = m.index;
+    const cant = NUMEROS[m[1].toLowerCase()] ?? parseFloat(m[1].replace(',','.'));
+    const u = (m[2]||'cuadra').toLowerCase();
+    const metros = cant * (/^cuadra/.test(u) ? 84 : /^vara/.test(u) ? 0.84 : 1);
+    const d = m[3].toLowerCase();
+    if(/^(norte|lago)$/.test(d)) dN += metros;
+    else if(/^(sur|monta)/.test(d)) dN -= metros;
+    else if(/^(este|arriba|oriente)$/.test(d)) dE += metros;
+    else dE -= metros;
+    partes.push(m[0].trim());
+  }
+  if(!partes.length) return null;
+  const base = texto.slice(0, primero).replace(/[,\s]+$/,'').trim();
+  if(!base) return null;
+  return {base, dN, dE, desc: partes.join(' y ')};
+}
+const COORD_RE = /^\s*(-?\d{1,2}\.\d+)\s*[, ]\s*(-?\d{1,3}\.\d+)\s*$/;
 async function geocodificar(texto){
+  const c = cacheGet(texto);
+  if(c) return c;
+  let r = null;
+  const cm = texto.match(COORD_RE);
+  if(cm) r = {lat:+cm[1], lon:+cm[2], nombre:'Coordenadas'};
+  const ref = !r && parsearReferencia(texto);
+  if(ref){
+    const b = await geocodificarSimple(ref.base);
+    if(b){
+      r = {lat: b.lat + ref.dN/111320,
+           lon: b.lon + ref.dE/(111320*Math.cos(b.lat*Math.PI/180)),
+           nombre: 'Ubicación aproximada: ' + ref.desc + ' de ' + (b.nombre||ref.base).split(',').slice(0,2).join(','),
+           aprox: true};
+    } else await sleep(1100);
+  }
+  if(!r) r = await geocodificarSimple(texto);
+  if(r) cacheSet(texto, r);
+  return r;
+}
+async function geocodificarSimple(texto){
   const c = cacheGet(texto);
   if(c) return c;
   let r = await buscar(texto);
@@ -358,8 +459,14 @@ function mostrar(orden, tr, perfil, conGPS){
     if(p.regreso) return;
     const ini = i===0;
     const html = `<div class="pin ${ini?'inicio':''}">${ini && conGPS ? '★' : i+(conGPS?0:1)}</div>`;
-    L.marker([p.lat,p.lon], {icon:L.divIcon({html, className:'', iconSize:[30,30], iconAnchor:[15,15]})})
-      .bindPopup(p.etiqueta).addTo(capa);
+    const mk = L.marker([p.lat,p.lon], {draggable: !(ini && conGPS), icon:L.divIcon({html, className:'', iconSize:[34,34], iconAnchor:[17,17]})})
+      .bindPopup(p.etiqueta + (p.aprox ? '<br><small>Ubicación aproximada: arrastra el número para ajustarla</small>' : '')).addTo(capa);
+    mk.on('dragend', ()=>{
+      const ll = mk.getLatLng();
+      p.lat = ll.lat; p.lon = ll.lng; p.aprox = false;
+      cacheSet(p.etiqueta, {lat:ll.lat, lon:ll.lng, nombre:'Ubicación ajustada a mano'});
+      $('msgMapa').textContent = `✔ "${p.etiqueta}" ajustada. Toca "Organizar ruta" otra vez para recalcular con la nueva ubicación.`;
+    });
   });
   mapa.fitBounds(L.latLngBounds(tr.geom).pad(0.15));
 
