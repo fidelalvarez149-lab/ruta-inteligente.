@@ -8,7 +8,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-title" content="Ruta">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>Ruta Inteligente</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
@@ -45,10 +47,18 @@ ol{list-style:none;margin:0;padding:0}
 .info small{color:var(--gris);display:block;line-height:1.35}
 .acc{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
 .acc a{font-size:.9rem;text-decoration:none;background:#e6eef7;color:var(--azul2);padding:7px 12px;border-radius:10px;font-weight:600}
+.acc button{font:inherit;font-size:.9rem;background:#e6eef7;color:var(--azul2);padding:7px 12px;border:0;border-radius:10px;font-weight:600;cursor:pointer}
 .pin{background:var(--azul);color:#fff;border:2px solid #fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;box-shadow:0 1px 5px rgba(0,0,0,.4)}
 .pin.inicio{background:#067647}
 #instalar{display:none;margin-bottom:18px;background:#067647}
 .fallo{color:#b42318;font-size:.95rem;margin-top:10px}
+.chk{display:flex;align-items:center;gap:10px;font-size:1.05rem;margin:0 0 16px;font-weight:600}
+.chk input{width:22px;height:22px;flex:0 0 22px}
+#toast{display:none;position:fixed;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));background:#10243a;color:#fff;padding:14px 16px;border-radius:14px;z-index:9999;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 4px 16px rgba(0,0,0,.35)}
+#toast button{background:#fff;color:#10243a;border:0;border-radius:10px;padding:9px 16px;font-weight:700}
+footer{text-align:center;color:var(--gris);font-size:.85rem;padding:0 16px 28px}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid #9db3c8;border-top-color:var(--azul);border-radius:50%;animation:g 1s linear infinite;vertical-align:-2px;margin-right:8px}
+@keyframes g{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -58,6 +68,10 @@ ol{list-style:none;margin:0;padding:0}
 </header>
 <main>
   <button id="instalar" class="btn">📲 Instalar app en el teléfono</button>
+  <div id="iosHint" class="card" style="display:none">
+    <b>📲 Instalar en iPhone</b><br>
+    Abre esta página en <b>Safari</b>, toca el botón <b>Compartir</b> (cuadro con flecha hacia arriba) y elige <b>Agregar a pantalla de inicio</b>.
+  </div>
 
   <section class="card">
     <span class="chip">Nicaragua · Android · GPS</span>
@@ -75,8 +89,11 @@ ol{list-style:none;margin:0;padding:0}
     <textarea id="direcciones" placeholder="Metro Centro, Managua&#10;Mercado Oriental, Managua"></textarea>
     <p class="hint">Escribe referencias lo más completas posible: lugar, barrio, municipio y departamento. Puedes ingresar hasta 10 paradas.</p>
 
+    <label class="chk"><input type="checkbox" id="regreso"> Volver al punto de partida al final</label>
+
     <button id="btnGPS" class="btn">📍 Usar mi ubicación y organizar ruta</button>
     <button id="btnSinGPS" class="btn sec">Organizar sin GPS (empezar en la primera dirección)</button>
+    <button id="btnLimpiar" class="btn sec">Borrar direcciones</button>
     <div id="estado"></div>
     <div id="fallos" class="fallo"></div>
   </section>
@@ -92,9 +109,26 @@ ol{list-style:none;margin:0;padding:0}
     <ol id="lista"></ol>
     <div class="acc" style="margin-top:14px">
       <a id="verGoogle" href="#" target="_blank" rel="noopener">Abrir ruta completa en Google Maps</a>
+      <button id="btnWazeRuta" type="button">🚗 Abrir ruta completa con Waze</button>
+      <button id="btnCompartir" type="button">📤 Compartir ruta</button>
+      <a id="verWa" href="#" target="_blank" rel="noopener">WhatsApp</a>
+      <button id="btnCopiar" type="button">📋 Copiar texto</button>
     </div>
+    <div id="panelWaze" style="display:none;margin-top:14px;padding:14px;border:1.5px solid var(--borde);border-radius:16px">
+      <b id="wzTitulo"></b>
+      <div id="wzDir" class="hint" style="margin:6px 0 12px"></div>
+      <div class="acc">
+        <a id="wzAbrir" href="#" target="_blank" rel="noopener">🚗 Abrir en Waze</a>
+        <button id="wzSig" type="button">✔ Llegué, siguiente</button>
+        <button id="wzAnt" type="button">◀ Anterior</button>
+      </div>
+      <div class="hint" style="margin:10px 0 0">Waze solo navega a un destino a la vez. Aquí la ruta sigue el orden planeado: al llegar, vuelve a la app y toca "Llegué, siguiente".</div>
+    </div>
+    <div id="msgCompartir" class="hint" style="margin:10px 0 0"></div>
   </section>
 </main>
+<footer>Ruta Inteligente v2.4 · Mapas © OpenStreetMap</footer>
+<div id="toast"><span>Hay una versión nueva de la app.</span><button id="btnAct">Actualizar</button></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -114,7 +148,13 @@ const CENTRO = [12.136, -86.251]; // Managua
 try {
   $('direcciones').value = localStorage.getItem('ri_dirs') || '';
   $('vehiculo').value = localStorage.getItem('ri_veh') || 'moto';
+  $('regreso').checked = localStorage.getItem('ri_reg') === '1';
 } catch(e){}
+$('regreso').addEventListener('change', () => { try{localStorage.setItem('ri_reg', $('regreso').checked?'1':'0')}catch(e){} });
+$('btnLimpiar').addEventListener('click', () => {
+  $('direcciones').value=''; try{localStorage.setItem('ri_dirs','')}catch(e){}
+  capa.clearLayers(); $('cardResultado').style.display='none'; $('fallos').textContent=''; estado('');
+});
 $('direcciones').addEventListener('input', () => { try{localStorage.setItem('ri_dirs', $('direcciones').value)}catch(e){} });
 $('vehiculo').addEventListener('change', () => { try{localStorage.setItem('ri_veh', $('vehiculo').value)}catch(e){} });
 
@@ -126,7 +166,11 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
 let capa = L.layerGroup().addTo(mapa);
 
 /* ---------- utilidades ---------- */
-function estado(msg, tipo){ const e=$('estado'); e.textContent=msg; e.className=tipo||''; }
+function estado(msg, tipo){
+  const e=$('estado'); e.className=tipo||''; e.textContent='';
+  if(msg && !tipo){ const s=document.createElement('span'); s.className='spin'; e.appendChild(s); }
+  e.appendChild(document.createTextNode(msg));
+}
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function haversine(a, b){
   const R=6371000, rad=x=>x*Math.PI/180;
@@ -175,6 +219,15 @@ function cacheSet(q,v){ try{ localStorage.setItem('ri_geo_'+q.toLowerCase(), JSO
 async function geocodificar(texto){
   const c = cacheGet(texto);
   if(c) return c;
+  let r = await buscar(texto);
+  // Segundo intento: agregar Managua si no la menciona
+  if(!r && !/managua|le[oó]n|granada|masaya|chinandega|matagalpa|estel[ií]|rivas|carazo|jinotega|boaco|chontales|nueva segovia|madriz|r[ií]o san juan|bluefields|caribe/i.test(texto)){
+    r = await buscar(texto + ', Managua');
+  }
+  if(r) cacheSet(texto, r);
+  return r;
+}
+async function buscar(texto){
   const conPais = /nicaragua/i.test(texto) ? texto : texto + ', Nicaragua';
   let r = null;
   // 1) Nominatim
@@ -198,7 +251,6 @@ async function geocodificar(texto){
       }
     }catch(e){}
   }
-  if(r) cacheSet(texto, r);
   return r;
 }
 
@@ -254,10 +306,56 @@ async function trazar(orden, perfil){
   }
 }
 
+let textoRuta = '';
+let paradasNav = [], idxNav = 0;
+function renderWaze(){
+  const n = paradasNav.length; if(!n) return;
+  const p = paradasNav[idxNav];
+  $('wzTitulo').textContent = `Parada ${idxNav+1} de ${n}` + (p.regreso ? ' · regreso' : '');
+  $('wzDir').textContent = p.etiqueta;
+  $('wzAbrir').href = `https://waze.com/ul?ll=${p.lat},${p.lon}&navigate=yes`;
+  $('wzAnt').disabled = idxNav===0;
+  $('wzSig').textContent = idxNav>=n-1 ? '🏁 Terminar ruta' : '✔ Llegué, siguiente';
+}
+$('btnWazeRuta').addEventListener('click', ()=>{
+  if(!paradasNav.length) return;
+  idxNav = 0; renderWaze();
+  $('panelWaze').style.display='block';
+  $('panelWaze').scrollIntoView({behavior:'smooth', block:'center'});
+});
+$('wzSig').addEventListener('click', ()=>{
+  if(idxNav >= paradasNav.length-1){
+    $('panelWaze').style.display='none'; $('msgCompartir').textContent='Ruta terminada 🏁'; return;
+  }
+  idxNav++; renderWaze();
+});
+$('wzAnt').addEventListener('click', ()=>{ if(idxNav>0){ idxNav--; renderWaze(); } });
+async function copiarTexto(t){
+  try{ await navigator.clipboard.writeText(t); return true; }catch(e){}
+  try{
+    const ta=document.createElement('textarea'); ta.value=t; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select(); const ok=document.execCommand('copy'); ta.remove(); return ok;
+  }catch(e){ return false; }
+}
+$('btnCompartir').addEventListener('click', async ()=>{
+  if(!textoRuta) return;
+  const m=$('msgCompartir');
+  if(navigator.share){
+    try{ await navigator.share({title:'Mi ruta', text:textoRuta}); return; }
+    catch(e){ if(e && e.name==='AbortError') return; }
+  }
+  m.textContent = (await copiarTexto(textoRuta)) ? 'Ruta copiada. Pégala en el chat o mensaje que quieras ✔' : 'No se pudo compartir ni copiar en este dispositivo.';
+});
+$('btnCopiar').addEventListener('click', async ()=>{
+  if(!textoRuta) return;
+  $('msgCompartir').textContent = (await copiarTexto(textoRuta)) ? 'Ruta copiada ✔' : 'No se pudo copiar.';
+});
+
 function mostrar(orden, tr, perfil, conGPS){
   capa.clearLayers();
   L.polyline(tr.geom, {color:'#145a8d', weight:5, opacity:.85}).addTo(capa);
   orden.forEach((p,i)=>{
+    if(p.regreso) return;
     const ini = i===0;
     const html = `<div class="pin ${ini?'inicio':''}">${ini && conGPS ? '★' : i+(conGPS?0:1)}</div>`;
     L.marker([p.lat,p.lon], {icon:L.divIcon({html, className:'', iconSize:[30,30], iconAnchor:[15,15]})})
@@ -266,7 +364,8 @@ function mostrar(orden, tr, perfil, conGPS){
   mapa.fitBounds(L.latLngBounds(tr.geom).pad(0.15));
 
   $('cardResultado').style.display='block';
-  $('resumen').textContent = `${orden.length-(conGPS?1:0)} paradas · ${fmtDist(tr.dist)} · ${fmtTiempo(tr.dur)}`
+  const hayRegreso = orden.some(p=>p.regreso);
+  $('resumen').textContent = `${orden.length-(conGPS?1:0)-(hayRegreso?1:0)} paradas · ${fmtDist(tr.dist)} · ${fmtTiempo(tr.dur)}`
     + (tr.aproximada ? ' (estimado, sin conexión al servicio de rutas)' : '');
   const ol = $('lista'); ol.innerHTML='';
   orden.forEach((p,i)=>{
@@ -274,7 +373,7 @@ function mostrar(orden, tr, perfil, conGPS){
     const inicio = i===0 && conGPS;
     const n = conGPS ? i : i+1;
     const tramo = i>0 ? tr.tramos[i-1] : null;
-    li.innerHTML = `<div class="num ${inicio?'inicio':''}">${inicio?'★':n}</div>
+    li.innerHTML = `<div class="num ${inicio?'inicio':''}">${inicio?'★':(p.regreso?'↩':n)}</div>
       <div class="info"><b></b><small></small>
       ${tramo?`<small>Desde la anterior: ${fmtDist(tramo.dist)} · ${fmtTiempo(tramo.dur)}</small>`:''}
       ${inicio?'':`<div class="acc">
@@ -289,6 +388,15 @@ function mostrar(orden, tr, perfil, conGPS){
   let url = `https://www.google.com/maps/dir/?api=1&travelmode=${PERFILES[perfil].gmaps}&origin=${pts[0]}&destination=${pts[pts.length-1]}`;
   if(pts.length>2) url += '&waypoints='+encodeURIComponent(pts.slice(1,-1).join('|'));
   $('verGoogle').href = url;
+  const texto = 'Ruta de hoy (' + $('resumen').textContent + '):\n'
+    + orden.filter(p=>!(conGPS && p===orden[0])).map((p,i)=>(p.regreso?'↩ ':(i+1)+'. ')+p.etiqueta
+        + '\n   Waze: https://waze.com/ul?ll='+p.lat+','+p.lon+'&navigate=yes').join('\n')
+    + '\n\nMapa: ' + url;
+  textoRuta = texto;
+  paradasNav = orden.filter((p,i)=>!(conGPS && i===0));
+  idxNav = 0; $('panelWaze').style.display='none';
+  $('msgCompartir').textContent = '';
+  $('verWa').href = 'https://wa.me/?text=' + encodeURIComponent(texto);
   $('cardResultado').scrollIntoView({behavior:'smooth'});
 }
 
@@ -300,6 +408,8 @@ async function organizar(usarGPS){
   $('fallos').textContent='';
   if(!lineas.length) return estado('Escribe al menos una dirección.', 'err');
   if(lineas.length>MAX) return estado(`Máximo ${MAX} paradas. Tienes ${lineas.length}.`, 'err');
+  if(!navigator.onLine) return estado('Sin internet. Conéctate a datos o Wi‑Fi para buscar direcciones y calcular la ruta.', 'err');
+  if(!usarGPS && lineas.length<2) return estado('Sin GPS necesitas al menos 2 direcciones.', 'err');
   const perfil = $('vehiculo').value;
   ocupado=true; $('btnGPS').disabled=$('btnSinGPS').disabled=true;
   try{
@@ -318,19 +428,20 @@ async function organizar(usarGPS){
       if(!enCache && i<lineas.length-1) await sleep(1100); // límite de Nominatim
     }
     if(fallos.length) $('fallos').textContent = 'No encontradas (agrega barrio, municipio o departamento): ' + fallos.join(' · ');
-    if(!ok.length || (!origen && ok.length<2 && false)) throw new Error('No se encontró ninguna dirección.');
+    if(!ok.length) throw new Error('No se encontró ninguna dirección. Agrega barrio, municipio o departamento.');
     const nodos = origen ? [origen, ...ok] : ok;
     if(nodos.length<2){
-      estado('Solo hay una parada y no hay punto de partida; usa tu ubicación.', 'err'); return;
+      estado('Solo se encontró una dirección y no hay punto de partida. Usa tu ubicación o corrige las direcciones.', 'err'); return;
     }
     estado('Calculando el mejor orden…');
     const D = await matrizTiempos(nodos, perfil);
     const idx = optimizar(D);
     const orden = idx.map(i=>nodos[i]);
+    if($('regreso').checked) orden.push({...orden[0], etiqueta:'Regreso al punto de partida', regreso:true});
     estado('Trazando la ruta…');
     const tr = await trazar(orden, perfil);
     mostrar(orden, tr, perfil, !!origen);
-    estado('Ruta lista ✔', 'ok');
+    estado('Ruta lista ✔' + (fallos.length ? ' (algunas direcciones no se encontraron)' : ''), 'ok');
   }catch(e){
     estado('No se pudo completar: ' + e.message, 'err');
   }finally{
@@ -349,7 +460,30 @@ $('instalar').addEventListener('click', async ()=>{
   promptInstalar=null; $('instalar').style.display='none';
 });
 window.addEventListener('appinstalled', ()=>{ $('instalar').style.display='none'; });
-if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+/* ---------- aviso para iPhone/iPad ---------- */
+(function(){
+  const ua = navigator.userAgent;
+  const esIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  const instalada = window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+  if(esIOS && !instalada) $('iosHint').style.display='block';
+})();
+
+/* ---------- actualizaciones automáticas ---------- */
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').then(reg=>{
+    const avisar = w => { $('toast').style.display='flex'; $('btnAct').onclick = ()=>w.postMessage('ACTUALIZAR'); };
+    if(reg.waiting && navigator.serviceWorker.controller) avisar(reg.waiting);
+    reg.addEventListener('updatefound', ()=>{
+      const w = reg.installing;
+      w && w.addEventListener('statechange', ()=>{ if(w.state==='installed' && navigator.serviceWorker.controller) avisar(w); });
+    });
+    // Busca versión nueva al abrir la app y cada hora
+    reg.update().catch(()=>{});
+    setInterval(()=>reg.update().catch(()=>{}), 3600000);
+  }).catch(()=>{});
+  let recargado=false; const teniaControl = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{ if(recargado || !teniaControl) return; recargado=true; location.reload(); });
+}
 </script>
 </body>
 </html>
