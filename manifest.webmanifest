@@ -1,6 +1,6 @@
 {
-  "name": "Ruta Inteligente",
-  "short_name": "Ruta",
+  "name": "Ruta FAD",
+  "short_name": "Ruta FAD",
   "description": "Ordena tus paradas comenzando desde tu ubicación actual.",
   "lang": "es",
   "start_url": "./index.html",
