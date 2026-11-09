@@ -1,5 +1,5 @@
 // Cambia este número cada vez que publiques una versión nueva
-const VERSION = 'v2.7';
+const VERSION = 'v2.8';
 const CACHE = 'ruta-' + VERSION;
 const BASE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-180.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'];

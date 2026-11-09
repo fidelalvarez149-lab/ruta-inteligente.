@@ -54,6 +54,12 @@ ol{list-style:none;margin:0;padding:0}
 .fallo{color:#b42318;font-size:.95rem;margin-top:10px}
 #btnVoz.on{background:#fde8e6;color:#b42318;animation:p 1.2s ease-in-out infinite}
 @keyframes p{50%{opacity:.6}}
+.stop{border:1.5px solid var(--borde);border-radius:18px;padding:14px;margin-bottom:14px;background:#f8fafc}
+.stophead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;color:var(--azul2)}
+.stop input,.stop textarea{display:block;width:100%;font:inherit;font-size:1.05rem;padding:12px;border:1.5px solid var(--borde);border-radius:14px;background:#fff;color:var(--texto);margin-bottom:10px}
+.stop textarea{min-height:72px;margin-bottom:0}
+.stop .del{background:#fde8e6;color:#b42318;border:0;border-radius:10px;width:36px;height:36px;font-size:1.05rem;font-weight:700}
+.info .tel{color:var(--azul2);font-weight:600}
 .chk{display:flex;align-items:center;gap:10px;font-size:1.05rem;margin:0 0 16px;font-weight:600}
 .chk input{width:22px;height:22px;flex:0 0 22px}
 #toast{display:none;position:fixed;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));background:#10243a;color:#fff;padding:14px 16px;border-radius:14px;z-index:9999;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 4px 16px rgba(0,0,0,.35)}
@@ -87,8 +93,9 @@ footer{text-align:center;color:var(--gris);font-size:.85rem;padding:0 16px 28px}
       <option value="pie">🚶 A pie</option>
     </select>
 
-    <label for="direcciones" style="margin-top:22px">Escribe las direcciones (una por línea)</label>
-    <textarea id="direcciones" placeholder="Metro Centro, Managua&#10;Mercado Oriental, Managua"></textarea>
+    <label style="margin-top:22px">Paradas del recorrido</label>
+    <div id="paradas"></div>
+    <button id="btnAgregar" type="button" class="btn sec" style="margin-top:0">➕ Agregar otra parada</button>
     <button id="btnVoz" type="button" class="btn sec" style="margin-top:10px">🎤 Dictar una dirección</button>
     <div id="msgVoz" class="hint" style="margin:8px 0 0"></div>
     <p class="hint">Escribe referencias lo más completas posible: lugar, barrio, municipio y departamento. Puedes ingresar hasta 10 paradas.</p>
@@ -97,7 +104,7 @@ footer{text-align:center;color:var(--gris);font-size:.85rem;padding:0 16px 28px}
 
     <button id="btnGPS" class="btn">📍 Usar mi ubicación y organizar ruta</button>
     <button id="btnSinGPS" class="btn sec">Organizar sin GPS (empezar en la primera dirección)</button>
-    <button id="btnLimpiar" class="btn sec">Borrar direcciones</button>
+    <button id="btnLimpiar" class="btn sec">Borrar todas las paradas</button>
     <div id="estado"></div>
     <div id="fallos" class="fallo"></div>
   </section>
@@ -124,6 +131,8 @@ footer{text-align:center;color:var(--gris);font-size:.85rem;padding:0 16px 28px}
       <div id="wzDir" class="hint" style="margin:6px 0 12px"></div>
       <div class="acc">
         <a id="wzAbrir" href="#" target="_blank" rel="noopener">🚗 Abrir en Waze</a>
+        <a id="wzLlamar" href="#" style="display:none">📞 Llamar</a>
+        <a id="wzWa" href="#" target="_blank" rel="noopener" style="display:none">💬 WhatsApp</a>
         <button id="wzSig" type="button">✔ Llegué, siguiente</button>
         <button id="wzAnt" type="button">◀ Anterior</button>
       </div>
@@ -132,7 +141,7 @@ footer{text-align:center;color:var(--gris);font-size:.85rem;padding:0 16px 28px}
     <div id="msgCompartir" class="hint" style="margin:10px 0 0"></div>
   </section>
 </main>
-<footer>Ruta FAD v2.7 · Mapas © OpenStreetMap</footer>
+<footer>Ruta FAD v2.8 · Mapas © OpenStreetMap</footer>
 <div id="toast"><span>Hay una versión nueva de la app.</span><button id="btnAct">Actualizar</button></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -151,16 +160,71 @@ const CENTRO = [12.136, -86.251]; // Managua
 
 /* ---------- persistencia ---------- */
 try {
-  $('direcciones').value = localStorage.getItem('ri_dirs') || '';
   $('vehiculo').value = localStorage.getItem('ri_veh') || 'moto';
   $('regreso').checked = localStorage.getItem('ri_reg') === '1';
 } catch(e){}
 $('regreso').addEventListener('change', () => { try{localStorage.setItem('ri_reg', $('regreso').checked?'1':'0')}catch(e){} });
+
+/* ---------- paradas: cliente, teléfono y dirección (campos separados) ---------- */
+const esc = s => String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function telDigitos(t){ let d=(t||'').replace(/\D/g,''); if(!d) return ''; if(d.length===8) d='505'+d; return d; }
+function fmtTel(t){ const d=(t||'').replace(/\D/g,''); return d.length===8 ? d.slice(0,4)+' '+d.slice(4) : (t||'').trim(); }
+let paradasForm = [];
+const vacia = () => ({cliente:'', telefono:'', direccion:''});
+function guardarParadas(){ try{localStorage.setItem('ri_stops', JSON.stringify(paradasForm))}catch(e){} }
+function cargarParadas(){
+  try{
+    const raw = localStorage.getItem('ri_stops');
+    if(raw){
+      const a = JSON.parse(raw);
+      if(Array.isArray(a)) paradasForm = a.slice(0,MAX).map(s=>({cliente:String(s.cliente||''), telefono:String(s.telefono||''), direccion:String(s.direccion||'')}));
+    } else {
+      // Versión anterior: una dirección por línea
+      paradasForm = (localStorage.getItem('ri_dirs')||'').split('\n').map(s=>s.trim()).filter(Boolean).slice(0,MAX)
+        .map(d=>({cliente:'', telefono:'', direccion:d}));
+    }
+  }catch(e){}
+  if(!paradasForm.length) paradasForm = [vacia()];
+}
+function renderParadas(){
+  const cont = $('paradas'); cont.innerHTML='';
+  paradasForm.forEach((s,i)=>{
+    const d = document.createElement('div'); d.className='stop';
+    d.innerHTML = `<div class="stophead"><b>Parada ${i+1}</b><button type="button" class="del" aria-label="Quitar parada ${i+1}">✕</button></div>
+      <input class="f-cli" type="text" placeholder="Nombre del cliente" autocomplete="off" autocapitalize="words">
+      <input class="f-tel" type="tel" inputmode="tel" placeholder="Teléfono (ej. 8888 8888)" autocomplete="off">
+      <textarea class="f-dir" placeholder="Dirección (ej. Rotonda El Güegüense, 3 cuadras al lago)"></textarea>`;
+    const cli=d.querySelector('.f-cli'), tel=d.querySelector('.f-tel'), dir=d.querySelector('.f-dir');
+    cli.value=s.cliente; tel.value=s.telefono; dir.value=s.direccion;
+    cli.addEventListener('input', ()=>{ s.cliente=cli.value; guardarParadas(); });
+    tel.addEventListener('input', ()=>{ s.telefono=tel.value; guardarParadas(); });
+    dir.addEventListener('input', ()=>{ s.direccion=dir.value; guardarParadas(); });
+    d.querySelector('.del').addEventListener('click', ()=>{
+      paradasForm.splice(paradasForm.indexOf(s),1);
+      if(!paradasForm.length) paradasForm=[vacia()];
+      guardarParadas(); renderParadas();
+    });
+    cont.appendChild(d);
+  });
+  $('btnAgregar').disabled = paradasForm.length>=MAX;
+  $('btnAgregar').textContent = paradasForm.length>=MAX ? `Máximo ${MAX} paradas` : '➕ Agregar otra parada';
+}
+$('btnAgregar').addEventListener('click', ()=>{
+  if(paradasForm.length>=MAX) return;
+  paradasForm.push(vacia()); guardarParadas(); renderParadas();
+  const ins = $('paradas').querySelectorAll('.f-cli'); ins[ins.length-1].focus();
+});
+function agregarDireccionDictada(t){
+  let s = paradasForm.find(x=>!x.direccion.trim());
+  if(!s){ if(paradasForm.length>=MAX) return false; s=vacia(); paradasForm.push(s); }
+  s.direccion = t; guardarParadas(); renderParadas(); return true;
+}
+cargarParadas(); renderParadas();
 $('btnLimpiar').addEventListener('click', () => {
-  $('direcciones').value=''; try{localStorage.setItem('ri_dirs','')}catch(e){}
+  if(!confirm('¿Borrar todas las paradas?')) return;
+  paradasForm=[vacia()]; guardarParadas(); renderParadas();
   capa.clearLayers(); $('cardResultado').style.display='none'; $('fallos').textContent=''; estado('');
 });
-$('direcciones').addEventListener('input', () => { try{localStorage.setItem('ri_dirs', $('direcciones').value)}catch(e){} });
 $('vehiculo').addEventListener('change', () => { try{localStorage.setItem('ri_veh', $('vehiculo').value)}catch(e){} });
 
 /* ---------- dictado por voz ---------- */
@@ -203,10 +267,9 @@ $('vehiculo').addEventListener('change', () => { try{localStorage.setItem('ri_ve
       parar();
       const t = final.trim().replace(/[.。]+$/,'');
       if(t){
-        const ta = $('direcciones');
-        ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/,'') + '\n' : '') + t;
-        ta.dispatchEvent(new Event('input'));
-        msg.textContent = '✔ Agregada: ' + t + '. Revisa que se escribió bien; puedes corregirla con el teclado.';
+        msg.textContent = agregarDireccionDictada(t)
+          ? '✔ Agregada: ' + t + '. Revisa que se escribió bien; puedes corregirla con el teclado.'
+          : 'Ya tienes ' + MAX + ' paradas. Borra una para agregar otra.';
       }
     };
     try{ rec.start(); }catch(e){ msg.textContent='No se pudo iniciar el micrófono.'; parar(); }
@@ -413,7 +476,10 @@ function renderWaze(){
   const n = paradasNav.length; if(!n) return;
   const p = paradasNav[idxNav];
   $('wzTitulo').textContent = `Parada ${idxNav+1} de ${n}` + (p.regreso ? ' · regreso' : '');
-  $('wzDir').textContent = p.etiqueta;
+  $('wzDir').textContent = (p.cliente ? p.cliente + ' — ' : '') + p.etiqueta;
+  const dt = telDigitos(p.telefono);
+  $('wzLlamar').style.display = $('wzWa').style.display = dt ? '' : 'none';
+  if(dt){ $('wzLlamar').href = 'tel:+' + dt; $('wzWa').href = 'https://wa.me/' + dt; }
   $('wzAbrir').href = `https://waze.com/ul?ll=${p.lat},${p.lon}&navigate=yes`;
   $('wzAnt').disabled = idxNav===0;
   $('wzSig').textContent = idxNav>=n-1 ? '🏁 Terminar ruta' : '✔ Llegué, siguiente';
@@ -452,6 +518,10 @@ $('btnCopiar').addEventListener('click', async ()=>{
   $('msgCompartir').textContent = (await copiarTexto(textoRuta)) ? 'Ruta copiada ✔' : 'No se pudo copiar.';
 });
 
+function lineaParada(p){
+  const cab = [p.cliente, p.telefono ? 'Tel: ' + fmtTel(p.telefono) : ''].filter(Boolean).join(' · ');
+  return (cab ? cab + '\n   ' : '') + p.etiqueta;
+}
 function mostrar(orden, tr, perfil, conGPS){
   capa.clearLayers();
   L.polyline(tr.geom, {color:'#145a8d', weight:5, opacity:.85}).addTo(capa);
@@ -460,7 +530,7 @@ function mostrar(orden, tr, perfil, conGPS){
     const ini = i===0;
     const html = `<div class="pin ${ini?'inicio':''}">${ini && conGPS ? '★' : i+(conGPS?0:1)}</div>`;
     const mk = L.marker([p.lat,p.lon], {draggable: !(ini && conGPS), icon:L.divIcon({html, className:'', iconSize:[34,34], iconAnchor:[17,17]})})
-      .bindPopup(p.etiqueta + (p.aprox ? '<br><small>Ubicación aproximada: arrastra el número para ajustarla</small>' : '')).addTo(capa);
+      .bindPopup((p.cliente ? '<b>' + esc(p.cliente) + '</b><br>' : '') + (p.telefono ? esc(fmtTel(p.telefono)) + '<br>' : '') + esc(p.etiqueta) + (p.aprox ? '<br><small>Ubicación aproximada: arrastra el número para ajustarla</small>' : '')).addTo(capa);
     mk.on('dragend', ()=>{
       const ll = mk.getLatLng();
       p.lat = ll.lat; p.lon = ll.lng; p.aprox = false;
@@ -481,14 +551,24 @@ function mostrar(orden, tr, perfil, conGPS){
     const n = conGPS ? i : i+1;
     const tramo = i>0 ? tr.tramos[i-1] : null;
     li.innerHTML = `<div class="num ${inicio?'inicio':''}">${inicio?'★':(p.regreso?'↩':n)}</div>
-      <div class="info"><b></b><small></small>
+      <div class="info"><b></b><small class="s1"></small><small class="s2"></small>
       ${tramo?`<small>Desde la anterior: ${fmtDist(tramo.dist)} · ${fmtTiempo(tramo.dur)}</small>`:''}
+      <div class="acc cont"></div>
       ${inicio?'':`<div class="acc">
         <a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}&travelmode=${PERFILES[perfil].gmaps}">Google Maps</a>
         <a target="_blank" rel="noopener" href="https://waze.com/ul?ll=${p.lat},${p.lon}&navigate=yes">Waze</a></div>`}
       </div>`;
-    li.querySelector('b').textContent = p.etiqueta;
-    li.querySelector('small').textContent = p.nombre || '';
+    const b=li.querySelector('b'), s1=li.querySelector('.s1'), s2=li.querySelector('.s2'), cont=li.querySelector('.cont');
+    if(p.cliente){ b.textContent=p.cliente; s1.textContent=p.etiqueta; s2.textContent=p.nombre||''; }
+    else { b.textContent=p.etiqueta; s1.textContent=p.nombre||''; s2.remove(); }
+    const dt = telDigitos(p.telefono);
+    if(dt){
+      const t=document.createElement('small'); t.className='tel'; t.textContent='📞 '+fmtTel(p.telefono);
+      s1.parentNode.insertBefore(t, cont);
+      const a1=document.createElement('a'); a1.href='tel:+'+dt; a1.textContent='📞 Llamar';
+      const a2=document.createElement('a'); a2.href='https://wa.me/'+dt; a2.target='_blank'; a2.rel='noopener'; a2.textContent='💬 WhatsApp';
+      cont.append(a1,a2);
+    } else cont.remove();
     ol.appendChild(li);
   });
   const pts = orden.map(p=>p.lat+','+p.lon);
@@ -496,7 +576,7 @@ function mostrar(orden, tr, perfil, conGPS){
   if(pts.length>2) url += '&waypoints='+encodeURIComponent(pts.slice(1,-1).join('|'));
   $('verGoogle').href = url;
   const texto = 'Ruta de hoy (' + $('resumen').textContent + '):\n'
-    + orden.filter(p=>!(conGPS && p===orden[0])).map((p,i)=>(p.regreso?'↩ ':(i+1)+'. ')+p.etiqueta
+    + orden.filter(p=>!(conGPS && p===orden[0])).map((p,i)=>(p.regreso?'↩ ':(i+1)+'. ')+lineaParada(p)
         + '\n   Waze: https://waze.com/ul?ll='+p.lat+','+p.lon+'&navigate=yes').join('\n')
     + '\n\nMapa: ' + url;
   textoRuta = texto;
@@ -511,7 +591,11 @@ function mostrar(orden, tr, perfil, conGPS){
 let ocupado=false;
 async function organizar(usarGPS){
   if(ocupado) return;
-  const lineas = [...new Set($('direcciones').value.split('\n').map(s=>s.trim()).filter(Boolean))];
+  const vistos = new Set();
+  const lineas = paradasForm
+    .map(s=>({cliente:s.cliente.trim(), telefono:s.telefono.trim(), direccion:s.direccion.trim()}))
+    .filter(s=>s.direccion)
+    .filter(s=>{ const k=[s.cliente,s.telefono,s.direccion].join('|').toLowerCase(); if(vistos.has(k)) return false; vistos.add(k); return true; });
   $('fallos').textContent='';
   if(!lineas.length) return estado('Escribe al menos una dirección.', 'err');
   if(lineas.length>MAX) return estado(`Máximo ${MAX} paradas. Tienes ${lineas.length}.`, 'err');
@@ -529,9 +613,10 @@ async function organizar(usarGPS){
     const ok=[], fallos=[];
     for(let i=0;i<lineas.length;i++){
       estado(`Buscando direcciones… ${i+1}/${lineas.length}`);
-      const enCache = !!cacheGet(lineas[i]);
-      const g = await geocodificar(lineas[i]);
-      if(g) ok.push({...g, etiqueta:lineas[i]}); else fallos.push(lineas[i]);
+      const enCache = !!cacheGet(lineas[i].direccion);
+      const g = await geocodificar(lineas[i].direccion);
+      if(g) ok.push({...g, etiqueta:lineas[i].direccion, cliente:lineas[i].cliente, telefono:lineas[i].telefono});
+      else fallos.push((lineas[i].cliente ? lineas[i].cliente + ' – ' : '') + lineas[i].direccion);
       if(!enCache && i<lineas.length-1) await sleep(1100); // límite de Nominatim
     }
     if(fallos.length) $('fallos').textContent = 'No encontradas (agrega barrio, municipio o departamento): ' + fallos.join(' · ');
@@ -544,7 +629,7 @@ async function organizar(usarGPS){
     const D = await matrizTiempos(nodos, perfil);
     const idx = optimizar(D);
     const orden = idx.map(i=>nodos[i]);
-    if($('regreso').checked) orden.push({...orden[0], etiqueta:'Regreso al punto de partida', regreso:true});
+    if($('regreso').checked) orden.push({...orden[0], etiqueta:'Regreso al punto de partida', regreso:true, cliente:'', telefono:''});
     estado('Trazando la ruta…');
     const tr = await trazar(orden, perfil);
     mostrar(orden, tr, perfil, !!origen);
