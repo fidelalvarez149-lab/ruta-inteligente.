@@ -57,7 +57,9 @@ ol{list-style:none;margin:0;padding:0}
 .stop{border:1.5px solid var(--borde);border-radius:18px;padding:14px;margin-bottom:14px;background:#f8fafc}
 .stophead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;color:var(--azul2)}
 .stop input,.stop textarea{display:block;width:100%;font:inherit;font-size:1.05rem;padding:12px;border:1.5px solid var(--borde);border-radius:14px;background:#fff;color:var(--texto);margin-bottom:10px}
-.stop textarea{min-height:72px;margin-bottom:0}
+.stop textarea{min-height:72px}
+.stop .pagorow{display:flex;gap:10px}
+.stop .pagorow>*{flex:1;min-width:0;width:auto;margin-bottom:0}
 .stop .del{background:#fde8e6;color:#b42318;border:0;border-radius:10px;width:36px;height:36px;font-size:1.05rem;font-weight:700}
 .info .tel{color:var(--azul2);font-weight:600}
 .chk{display:flex;align-items:center;gap:10px;font-size:1.05rem;margin:0 0 16px;font-weight:600}
@@ -118,6 +120,7 @@ footer{text-align:center;color:var(--gris);font-size:.85rem;padding:0 16px 28px}
   <section class="card" id="cardResultado" style="display:none">
     <h2>Orden de paradas</h2>
     <p id="resumen"></p>
+    <p id="cobros" style="display:none;font-weight:600;margin:0 0 12px;line-height:1.5;white-space:pre-line"></p>
     <ol id="lista"></ol>
     <div class="acc" style="margin-top:14px">
       <a id="verGoogle" href="#" target="_blank" rel="noopener">Abrir ruta completa en Google Maps</a>
@@ -128,7 +131,8 @@ footer{text-align:center;color:var(--gris);font-size:.85rem;padding:0 16px 28px}
     </div>
     <div id="panelWaze" style="display:none;margin-top:14px;padding:14px;border:1.5px solid var(--borde);border-radius:16px">
       <b id="wzTitulo"></b>
-      <div id="wzDir" class="hint" style="margin:6px 0 12px"></div>
+      <div id="wzDir" class="hint" style="margin:6px 0 8px"></div>
+      <div id="wzCobro" style="font-weight:700;margin:0 0 12px;color:var(--azul2)"></div>
       <div class="acc">
         <a id="wzAbrir" href="#" target="_blank" rel="noopener">🚗 Abrir en Waze</a>
         <a id="wzLlamar" href="#" style="display:none">📞 Llamar</a>
@@ -141,7 +145,7 @@ footer{text-align:center;color:var(--gris);font-size:.85rem;padding:0 16px 28px}
     <div id="msgCompartir" class="hint" style="margin:10px 0 0"></div>
   </section>
 </main>
-<footer>Ruta FAD v2.8 · Mapas © OpenStreetMap</footer>
+<footer>Ruta FAD v2.10 · Mapas © OpenStreetMap</footer>
 <div id="toast"><span>Hay una versión nueva de la app.</span><button id="btnAct">Actualizar</button></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -169,19 +173,65 @@ $('regreso').addEventListener('change', () => { try{localStorage.setItem('ri_reg
 const esc = s => String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function telDigitos(t){ let d=(t||'').replace(/\D/g,''); if(!d) return ''; if(d.length===8) d='505'+d; return d; }
 function fmtTel(t){ const d=(t||'').replace(/\D/g,''); return d.length===8 ? d.slice(0,4)+' '+d.slice(4) : (t||'').trim(); }
+/* Precio: acepta "350", "350.50", "1,200", "C$ 1,200.50" */
+function parsePrecio(t){
+  let s=(t||'').replace(/[^\d.,]/g,''); if(!s) return null;
+  if(s.includes(',') && s.includes('.')){
+    s = s.lastIndexOf(',')>s.lastIndexOf('.') ? s.replace(/\./g,'').replace(',','.') : s.replace(/,/g,'');
+  } else if(s.includes(',')){
+    s = /^\d{1,3}(,\d{3})+$/.test(s) ? s.replace(/,/g,'') : s.replace(',','.');
+  }
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+function monedaPref(){ try{ return localStorage.getItem('ri_mon')==='USD' ? 'USD' : 'NIO'; }catch(e){ return 'NIO'; } }
+function fmtMonto(n, mon){
+  n = Math.round(n*100)/100;
+  const f = Number.isInteger(n) ? String(n) : n.toFixed(2);
+  const [e,d] = f.split('.');
+  return (mon==='USD' ? 'US$ ' : 'C$ ') + e.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (d ? '.'+d : '');
+}
+function textoCobro(p, emoji){
+  const m = parsePrecio(p.precio), partes = [];
+  if(m!==null) partes.push((emoji?'💰 ':'') + fmtMonto(m, p.moneda));
+  if(p.pago) partes.push(p.pago==='efectivo' ? (emoji?'💵 ':'')+'Efectivo' : (emoji?'📲 ':'')+'En línea');
+  return partes.join(' · ');
+}
+function resumenCobros(orden){
+  // Un renglón por moneda: córdobas y dólares no se suman entre sí
+  const T = {NIO:{tot:0,ef:0,ln:0,sin:0,n:0}, USD:{tot:0,ef:0,ln:0,sin:0,n:0}};
+  orden.forEach(p=>{
+    if(p.regreso) return;
+    const m = parsePrecio(p.precio); if(m===null) return;
+    const t = T[p.moneda==='USD' ? 'USD' : 'NIO'];
+    t.n++; t.tot+=m;
+    if(p.pago==='efectivo') t.ef+=m; else if(p.pago==='linea') t.ln+=m; else t.sin+=m;
+  });
+  const lineas = [];
+  for(const mon of ['NIO','USD']){
+    const t = T[mon]; if(!t.n) continue;
+    const partes = ['Total a cobrar: ' + fmtMonto(t.tot, mon)];
+    if(t.ef) partes.push('💵 Efectivo: ' + fmtMonto(t.ef, mon));
+    if(t.ln) partes.push('📲 En línea: ' + fmtMonto(t.ln, mon));
+    if(t.sin) partes.push('Sin forma de pago: ' + fmtMonto(t.sin, mon));
+    lineas.push(partes.join(' · '));
+  }
+  return lineas.join('\n');
+}
 let paradasForm = [];
-const vacia = () => ({cliente:'', telefono:'', direccion:''});
+const vacia = () => ({cliente:'', telefono:'', direccion:'', precio:'', pago:'', moneda:monedaPref()});
 function guardarParadas(){ try{localStorage.setItem('ri_stops', JSON.stringify(paradasForm))}catch(e){} }
 function cargarParadas(){
   try{
     const raw = localStorage.getItem('ri_stops');
     if(raw){
       const a = JSON.parse(raw);
-      if(Array.isArray(a)) paradasForm = a.slice(0,MAX).map(s=>({cliente:String(s.cliente||''), telefono:String(s.telefono||''), direccion:String(s.direccion||'')}));
+      if(Array.isArray(a)) paradasForm = a.slice(0,MAX).map(s=>({cliente:String(s.cliente||''), telefono:String(s.telefono||''), direccion:String(s.direccion||''),
+          precio:String(s.precio||''), pago:(s.pago==='efectivo'||s.pago==='linea') ? s.pago : '', moneda:(s.moneda==='USD' ? 'USD' : 'NIO')}));
     } else {
       // Versión anterior: una dirección por línea
       paradasForm = (localStorage.getItem('ri_dirs')||'').split('\n').map(s=>s.trim()).filter(Boolean).slice(0,MAX)
-        .map(d=>({cliente:'', telefono:'', direccion:d}));
+        .map(d=>({cliente:'', telefono:'', direccion:d, precio:'', pago:'', moneda:'NIO'}));
     }
   }catch(e){}
   if(!paradasForm.length) paradasForm = [vacia()];
@@ -193,9 +243,29 @@ function renderParadas(){
     d.innerHTML = `<div class="stophead"><b>Parada ${i+1}</b><button type="button" class="del" aria-label="Quitar parada ${i+1}">✕</button></div>
       <input class="f-cli" type="text" placeholder="Nombre del cliente" autocomplete="off" autocapitalize="words">
       <input class="f-tel" type="tel" inputmode="tel" placeholder="Teléfono (ej. 8888 8888)" autocomplete="off">
-      <textarea class="f-dir" placeholder="Dirección (ej. Rotonda El Güegüense, 3 cuadras al lago)"></textarea>`;
+      <textarea class="f-dir" placeholder="Dirección (ej. Rotonda El Güegüense, 3 cuadras al lago)"></textarea>
+      <div class="pagorow">
+        <input class="f-pre" type="text" inputmode="decimal" placeholder="Precio" autocomplete="off" style="flex:2">
+        <select class="f-mon" aria-label="Moneda">
+          <option value="NIO">C$</option>
+          <option value="USD">US$</option>
+        </select>
+      </div>
+      <div class="pagorow" style="margin-top:10px">
+        <select class="f-pago" aria-label="Forma de pago">
+          <option value="">Forma de pago</option>
+          <option value="efectivo">💵 Efectivo</option>
+          <option value="linea">📲 En línea</option>
+        </select>
+      </div>`;
     const cli=d.querySelector('.f-cli'), tel=d.querySelector('.f-tel'), dir=d.querySelector('.f-dir');
     cli.value=s.cliente; tel.value=s.telefono; dir.value=s.direccion;
+    const pre=d.querySelector('.f-pre'), pag=d.querySelector('.f-pago');
+    pre.value=s.precio; pag.value=s.pago;
+    const mon=d.querySelector('.f-mon'); mon.value=s.moneda||'NIO';
+    mon.addEventListener('change', ()=>{ s.moneda=mon.value; try{localStorage.setItem('ri_mon', mon.value)}catch(e){} guardarParadas(); });
+    pre.addEventListener('input', ()=>{ s.precio=pre.value; guardarParadas(); });
+    pag.addEventListener('change', ()=>{ s.pago=pag.value; guardarParadas(); });
     cli.addEventListener('input', ()=>{ s.cliente=cli.value; guardarParadas(); });
     tel.addEventListener('input', ()=>{ s.telefono=tel.value; guardarParadas(); });
     dir.addEventListener('input', ()=>{ s.direccion=dir.value; guardarParadas(); });
@@ -477,6 +547,8 @@ function renderWaze(){
   const p = paradasNav[idxNav];
   $('wzTitulo').textContent = `Parada ${idxNav+1} de ${n}` + (p.regreso ? ' · regreso' : '');
   $('wzDir').textContent = (p.cliente ? p.cliente + ' — ' : '') + p.etiqueta;
+  const tc = textoCobro(p, true);
+  $('wzCobro').textContent = tc ? 'Cobrar: ' + tc : '';
   const dt = telDigitos(p.telefono);
   $('wzLlamar').style.display = $('wzWa').style.display = dt ? '' : 'none';
   if(dt){ $('wzLlamar').href = 'tel:+' + dt; $('wzWa').href = 'https://wa.me/' + dt; }
@@ -520,7 +592,8 @@ $('btnCopiar').addEventListener('click', async ()=>{
 
 function lineaParada(p){
   const cab = [p.cliente, p.telefono ? 'Tel: ' + fmtTel(p.telefono) : ''].filter(Boolean).join(' · ');
-  return (cab ? cab + '\n   ' : '') + p.etiqueta;
+  const tc = textoCobro(p, false);
+  return (cab ? cab + '\n   ' : '') + p.etiqueta + (tc ? '\n   Cobro: ' + tc : '');
 }
 function mostrar(orden, tr, perfil, conGPS){
   capa.clearLayers();
@@ -530,7 +603,7 @@ function mostrar(orden, tr, perfil, conGPS){
     const ini = i===0;
     const html = `<div class="pin ${ini?'inicio':''}">${ini && conGPS ? '★' : i+(conGPS?0:1)}</div>`;
     const mk = L.marker([p.lat,p.lon], {draggable: !(ini && conGPS), icon:L.divIcon({html, className:'', iconSize:[34,34], iconAnchor:[17,17]})})
-      .bindPopup((p.cliente ? '<b>' + esc(p.cliente) + '</b><br>' : '') + (p.telefono ? esc(fmtTel(p.telefono)) + '<br>' : '') + esc(p.etiqueta) + (p.aprox ? '<br><small>Ubicación aproximada: arrastra el número para ajustarla</small>' : '')).addTo(capa);
+      .bindPopup((p.cliente ? '<b>' + esc(p.cliente) + '</b><br>' : '') + (p.telefono ? esc(fmtTel(p.telefono)) + '<br>' : '') + (textoCobro(p,true) ? esc(textoCobro(p,true)) + '<br>' : '') + esc(p.etiqueta) + (p.aprox ? '<br><small>Ubicación aproximada: arrastra el número para ajustarla</small>' : '')).addTo(capa);
     mk.on('dragend', ()=>{
       const ll = mk.getLatLng();
       p.lat = ll.lat; p.lon = ll.lng; p.aprox = false;
@@ -544,6 +617,8 @@ function mostrar(orden, tr, perfil, conGPS){
   const hayRegreso = orden.some(p=>p.regreso);
   $('resumen').textContent = `${orden.length-(conGPS?1:0)-(hayRegreso?1:0)} paradas · ${fmtDist(tr.dist)} · ${fmtTiempo(tr.dur)}`
     + (tr.aproximada ? ' (estimado, sin conexión al servicio de rutas)' : '');
+  const cobroTxt = resumenCobros(orden);
+  $('cobros').textContent = cobroTxt; $('cobros').style.display = cobroTxt ? '' : 'none';
   const ol = $('lista'); ol.innerHTML='';
   orden.forEach((p,i)=>{
     const li=document.createElement('li'); li.className='parada';
@@ -569,13 +644,18 @@ function mostrar(orden, tr, perfil, conGPS){
       const a2=document.createElement('a'); a2.href='https://wa.me/'+dt; a2.target='_blank'; a2.rel='noopener'; a2.textContent='💬 WhatsApp';
       cont.append(a1,a2);
     } else cont.remove();
+    const tcob = textoCobro(p, true);
+    if(tcob){
+      const c=document.createElement('small'); c.className='tel'; c.textContent=tcob;
+      const info=li.querySelector('.info'); info.insertBefore(c, info.querySelector('.acc'));
+    }
     ol.appendChild(li);
   });
   const pts = orden.map(p=>p.lat+','+p.lon);
   let url = `https://www.google.com/maps/dir/?api=1&travelmode=${PERFILES[perfil].gmaps}&origin=${pts[0]}&destination=${pts[pts.length-1]}`;
   if(pts.length>2) url += '&waypoints='+encodeURIComponent(pts.slice(1,-1).join('|'));
   $('verGoogle').href = url;
-  const texto = 'Ruta de hoy (' + $('resumen').textContent + '):\n'
+  const texto = 'Ruta de hoy (' + $('resumen').textContent + '):\n' + (cobroTxt ? cobroTxt + '\n' : '')
     + orden.filter(p=>!(conGPS && p===orden[0])).map((p,i)=>(p.regreso?'↩ ':(i+1)+'. ')+lineaParada(p)
         + '\n   Waze: https://waze.com/ul?ll='+p.lat+','+p.lon+'&navigate=yes').join('\n')
     + '\n\nMapa: ' + url;
@@ -593,9 +673,9 @@ async function organizar(usarGPS){
   if(ocupado) return;
   const vistos = new Set();
   const lineas = paradasForm
-    .map(s=>({cliente:s.cliente.trim(), telefono:s.telefono.trim(), direccion:s.direccion.trim()}))
+    .map(s=>({cliente:s.cliente.trim(), telefono:s.telefono.trim(), direccion:s.direccion.trim(), precio:s.precio.trim(), pago:s.pago, moneda:s.moneda}))
     .filter(s=>s.direccion)
-    .filter(s=>{ const k=[s.cliente,s.telefono,s.direccion].join('|').toLowerCase(); if(vistos.has(k)) return false; vistos.add(k); return true; });
+    .filter(s=>{ const k=[s.cliente,s.telefono,s.direccion,s.precio,s.pago,s.moneda].join('|').toLowerCase(); if(vistos.has(k)) return false; vistos.add(k); return true; });
   $('fallos').textContent='';
   if(!lineas.length) return estado('Escribe al menos una dirección.', 'err');
   if(lineas.length>MAX) return estado(`Máximo ${MAX} paradas. Tienes ${lineas.length}.`, 'err');
@@ -615,7 +695,7 @@ async function organizar(usarGPS){
       estado(`Buscando direcciones… ${i+1}/${lineas.length}`);
       const enCache = !!cacheGet(lineas[i].direccion);
       const g = await geocodificar(lineas[i].direccion);
-      if(g) ok.push({...g, etiqueta:lineas[i].direccion, cliente:lineas[i].cliente, telefono:lineas[i].telefono});
+      if(g) ok.push({...g, etiqueta:lineas[i].direccion, cliente:lineas[i].cliente, telefono:lineas[i].telefono, precio:lineas[i].precio, pago:lineas[i].pago, moneda:lineas[i].moneda});
       else fallos.push((lineas[i].cliente ? lineas[i].cliente + ' – ' : '') + lineas[i].direccion);
       if(!enCache && i<lineas.length-1) await sleep(1100); // límite de Nominatim
     }
@@ -629,7 +709,7 @@ async function organizar(usarGPS){
     const D = await matrizTiempos(nodos, perfil);
     const idx = optimizar(D);
     const orden = idx.map(i=>nodos[i]);
-    if($('regreso').checked) orden.push({...orden[0], etiqueta:'Regreso al punto de partida', regreso:true, cliente:'', telefono:''});
+    if($('regreso').checked) orden.push({...orden[0], etiqueta:'Regreso al punto de partida', regreso:true, cliente:'', telefono:'', precio:'', pago:'', moneda:'NIO'});
     estado('Trazando la ruta…');
     const tr = await trazar(orden, perfil);
     mostrar(orden, tr, perfil, !!origen);
