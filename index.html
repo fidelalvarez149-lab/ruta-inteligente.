@@ -62,6 +62,9 @@ ol{list-style:none;margin:0;padding:0}
 .stop .pagorow>*{flex:1;min-width:0;width:auto;margin-bottom:0}
 .stop .del{background:#fde8e6;color:#b42318;border:0;border-radius:10px;width:36px;height:36px;font-size:1.05rem;font-weight:700}
 .info .tel{color:var(--azul2);font-weight:600}
+.acc button.ent{background:#067647;color:#fff}
+#toastEnt{display:none;position:fixed;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));background:#067647;color:#fff;padding:14px 16px;border-radius:14px;z-index:9998;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 4px 16px rgba(0,0,0,.35)}
+#toastEnt button{background:#fff;color:#067647;border:0;border-radius:10px;padding:9px 16px;font-weight:700}
 .chk{display:flex;align-items:center;gap:10px;font-size:1.05rem;margin:0 0 16px;font-weight:600}
 .chk input{width:22px;height:22px;flex:0 0 22px}
 #toast{display:none;position:fixed;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));background:#10243a;color:#fff;padding:14px 16px;border-radius:14px;z-index:9999;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 4px 16px rgba(0,0,0,.35)}
@@ -135,18 +138,27 @@ footer{text-align:center;color:var(--gris);font-size:.85rem;padding:0 16px 28px}
       <div id="wzCobro" style="font-weight:700;margin:0 0 12px;color:var(--azul2)"></div>
       <div class="acc">
         <a id="wzAbrir" href="#" target="_blank" rel="noopener">🚗 Abrir en Waze</a>
+        <button id="wzEnt" type="button" class="ent">✅ Entregado</button>
         <a id="wzLlamar" href="#" style="display:none">📞 Llamar</a>
         <a id="wzWa" href="#" target="_blank" rel="noopener" style="display:none">💬 WhatsApp</a>
         <button id="wzSig" type="button">✔ Llegué, siguiente</button>
         <button id="wzAnt" type="button">◀ Anterior</button>
       </div>
-      <div class="hint" style="margin:10px 0 0">Waze solo navega a un destino a la vez. Aquí la ruta sigue el orden planeado: al llegar, vuelve a la app y toca "Llegué, siguiente".</div>
+      <div class="hint" style="margin:10px 0 0">Waze solo navega a un destino a la vez. Aquí la ruta sigue el orden planeado: al entregar, vuelve a la app y toca "✅ Entregado" (pasa sola a la siguiente parada).</div>
     </div>
     <div id="msgCompartir" class="hint" style="margin:10px 0 0"></div>
   </section>
+
+  <section class="card" id="cardEntregados" style="display:none">
+    <h2>✅ Entregados (<span id="entN">0</span>)</h2>
+    <p id="entTotal" style="display:none;font-weight:600;margin:0 0 12px;line-height:1.5;white-space:pre-line"></p>
+    <ol id="entLista"></ol>
+    <button id="btnBorrarEnt" type="button" class="btn sec">Borrar historial de entregados</button>
+  </section>
 </main>
-<footer>Ruta FAD v2.10 · Mapas © OpenStreetMap</footer>
+<footer>Ruta FAD v2.11 · Mapas © OpenStreetMap</footer>
 <div id="toast"><span>Hay una versión nueva de la app.</span><button id="btnAct">Actualizar</button></div>
+<div id="toastEnt"><span id="teMsg"></span><button id="teUndo" type="button">Deshacer</button></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -197,7 +209,7 @@ function textoCobro(p, emoji){
   if(p.pago) partes.push(p.pago==='efectivo' ? (emoji?'💵 ':'')+'Efectivo' : (emoji?'📲 ':'')+'En línea');
   return partes.join(' · ');
 }
-function resumenCobros(orden){
+function resumenCobros(orden, rotulo){
   // Un renglón por moneda: córdobas y dólares no se suman entre sí
   const T = {NIO:{tot:0,ef:0,ln:0,sin:0,n:0}, USD:{tot:0,ef:0,ln:0,sin:0,n:0}};
   orden.forEach(p=>{
@@ -210,7 +222,7 @@ function resumenCobros(orden){
   const lineas = [];
   for(const mon of ['NIO','USD']){
     const t = T[mon]; if(!t.n) continue;
-    const partes = ['Total a cobrar: ' + fmtMonto(t.tot, mon)];
+    const partes = [(rotulo || 'Total a cobrar') + ': ' + fmtMonto(t.tot, mon)];
     if(t.ef) partes.push('💵 Efectivo: ' + fmtMonto(t.ef, mon));
     if(t.ln) partes.push('📲 En línea: ' + fmtMonto(t.ln, mon));
     if(t.sin) partes.push('Sin forma de pago: ' + fmtMonto(t.sin, mon));
@@ -219,7 +231,8 @@ function resumenCobros(orden){
   return lineas.join('\n');
 }
 let paradasForm = [];
-const vacia = () => ({cliente:'', telefono:'', direccion:'', precio:'', pago:'', moneda:monedaPref()});
+const nuevoId = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+const vacia = () => ({cliente:'', telefono:'', direccion:'', precio:'', pago:'', moneda:monedaPref(), id:nuevoId()});
 function guardarParadas(){ try{localStorage.setItem('ri_stops', JSON.stringify(paradasForm))}catch(e){} }
 function cargarParadas(){
   try{
@@ -227,11 +240,11 @@ function cargarParadas(){
     if(raw){
       const a = JSON.parse(raw);
       if(Array.isArray(a)) paradasForm = a.slice(0,MAX).map(s=>({cliente:String(s.cliente||''), telefono:String(s.telefono||''), direccion:String(s.direccion||''),
-          precio:String(s.precio||''), pago:(s.pago==='efectivo'||s.pago==='linea') ? s.pago : '', moneda:(s.moneda==='USD' ? 'USD' : 'NIO')}));
+          precio:String(s.precio||''), pago:(s.pago==='efectivo'||s.pago==='linea') ? s.pago : '', moneda:(s.moneda==='USD' ? 'USD' : 'NIO'), id:String(s.id||nuevoId())}));
     } else {
       // Versión anterior: una dirección por línea
       paradasForm = (localStorage.getItem('ri_dirs')||'').split('\n').map(s=>s.trim()).filter(Boolean).slice(0,MAX)
-        .map(d=>({cliente:'', telefono:'', direccion:d, precio:'', pago:'', moneda:'NIO'}));
+        .map(d=>({cliente:'', telefono:'', direccion:d, precio:'', pago:'', moneda:'NIO', id:nuevoId()}));
     }
   }catch(e){}
   if(!paradasForm.length) paradasForm = [vacia()];
@@ -293,7 +306,7 @@ cargarParadas(); renderParadas();
 $('btnLimpiar').addEventListener('click', () => {
   if(!confirm('¿Borrar todas las paradas?')) return;
   paradasForm=[vacia()]; guardarParadas(); renderParadas();
-  capa.clearLayers(); $('cardResultado').style.display='none'; $('fallos').textContent=''; estado('');
+  capa.clearLayers(); $('cardResultado').style.display='none'; $('fallos').textContent=''; estado(''); ultima=null;
 });
 $('vehiculo').addEventListener('change', () => { try{localStorage.setItem('ri_veh', $('vehiculo').value)}catch(e){} });
 
@@ -548,6 +561,7 @@ function renderWaze(){
   $('wzTitulo').textContent = `Parada ${idxNav+1} de ${n}` + (p.regreso ? ' · regreso' : '');
   $('wzDir').textContent = (p.cliente ? p.cliente + ' — ' : '') + p.etiqueta;
   const tc = textoCobro(p, true);
+  $('wzEnt').style.display = (p.regreso || !p.id) ? 'none' : '';
   $('wzCobro').textContent = tc ? 'Cobrar: ' + tc : '';
   const dt = telDigitos(p.telefono);
   $('wzLlamar').style.display = $('wzWa').style.display = dt ? '' : 'none';
@@ -595,7 +609,8 @@ function lineaParada(p){
   const tc = textoCobro(p, false);
   return (cab ? cab + '\n   ' : '') + p.etiqueta + (tc ? '\n   Cobro: ' + tc : '');
 }
-function mostrar(orden, tr, perfil, conGPS){
+function mostrar(orden, tr, perfil, conGPS, sinScroll){
+  ultima = {orden, perfil, conGPS};
   capa.clearLayers();
   L.polyline(tr.geom, {color:'#145a8d', weight:5, opacity:.85}).addTo(capa);
   orden.forEach((p,i)=>{
@@ -649,6 +664,12 @@ function mostrar(orden, tr, perfil, conGPS){
       const c=document.createElement('small'); c.className='tel'; c.textContent=tcob;
       const info=li.querySelector('.info'); info.insertBefore(c, info.querySelector('.acc'));
     }
+    if(!inicio && !p.regreso && p.id){
+      const dv=document.createElement('div'); dv.className='acc';
+      const bt=document.createElement('button'); bt.type='button'; bt.className='ent'; bt.textContent='✅ Entregado';
+      bt.addEventListener('click', ()=>marcarEntregado(p.id));
+      dv.appendChild(bt); li.querySelector('.info').appendChild(dv);
+    }
     ol.appendChild(li);
   });
   const pts = orden.map(p=>p.lat+','+p.lon);
@@ -664,8 +685,104 @@ function mostrar(orden, tr, perfil, conGPS){
   idxNav = 0; $('panelWaze').style.display='none';
   $('msgCompartir').textContent = '';
   $('verWa').href = 'https://wa.me/?text=' + encodeURIComponent(texto);
-  $('cardResultado').scrollIntoView({behavior:'smooth'});
+  if(!sinScroll) $('cardResultado').scrollIntoView({behavior:'smooth'});
 }
+
+/* ---------- entregas: confirmar, deshacer e historial ---------- */
+let ultima = null, verRuta = 0, ultimoGPS = true, toastT = null;
+let entregados = [];
+try{ const a = JSON.parse(localStorage.getItem('ri_ent') || '[]'); if(Array.isArray(a)) entregados = a; }catch(e){}
+function guardarEntregados(){ try{ localStorage.setItem('ri_ent', JSON.stringify(entregados)); }catch(e){} }
+function toastEnt(msg, undo){
+  const t = $('toastEnt'); $('teMsg').textContent = msg; t.style.display = 'flex';
+  $('teUndo').onclick = ()=>{ t.style.display='none'; clearTimeout(toastT); undo(); };
+  clearTimeout(toastT); toastT = setTimeout(()=>{ t.style.display='none'; }, 9000);
+}
+function renderEntregados(){
+  const card = $('cardEntregados'), ol = $('entLista'); ol.innerHTML = '';
+  if(!entregados.length){ card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  $('entN').textContent = entregados.length;
+  const tot = resumenCobros(entregados, 'Total cobrado');
+  $('entTotal').textContent = tot; $('entTotal').style.display = tot ? '' : 'none';
+  entregados.slice().reverse().forEach(e=>{
+    const li = document.createElement('li'); li.className = 'parada';
+    li.innerHTML = `<div class="num inicio">✓</div><div class="info"><b></b><small class="s1"></small><small class="s2"></small><small class="s3 tel"></small><div class="acc"><button type="button">↩ Deshacer</button></div></div>`;
+    li.querySelector('b').textContent = e.cliente || e.direccion;
+    const s1 = li.querySelector('.s1'), s3 = li.querySelector('.s3');
+    if(e.cliente) s1.textContent = e.direccion; else s1.remove();
+    li.querySelector('.s2').textContent = 'Entregado: ' + new Date(e.cuando).toLocaleString('es', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+    const tc = textoCobro(e, true);
+    if(tc) s3.textContent = tc; else s3.remove();
+    li.querySelector('button').addEventListener('click', ()=>restaurarEntrega(e.cuando));
+    ol.appendChild(li);
+  });
+}
+async function marcarEntregado(id){
+  if(!ultima) return;
+  const {orden, perfil, conGPS} = ultima;
+  const i = orden.findIndex(p=>p.id===id && !p.regreso);
+  if(i<0) return;
+  const p = orden[i];
+  const abierto = $('panelWaze').style.display==='block';
+  const actualId = abierto && paradasNav[idxNav] ? paradasNav[idxNav].id : null;
+  const idxPrev = idxNav;
+  // 1) de pendientes a entregados
+  const pos = paradasForm.findIndex(s=>s.id===id);
+  const fila = pos>=0 ? paradasForm[pos]
+    : {cliente:p.cliente||'', telefono:p.telefono||'', direccion:p.etiqueta, precio:p.precio||'', pago:p.pago||'', moneda:p.moneda||'NIO', id};
+  if(pos>=0) paradasForm.splice(pos,1);
+  if(!paradasForm.length) paradasForm = [vacia()];
+  guardarParadas(); renderParadas();
+  const reg = {...fila, cuando:new Date().toISOString(), pos:Math.max(pos,0), lat:p.lat, lon:p.lon};
+  entregados.push(reg); guardarEntregados(); renderEntregados();
+  toastEnt('✅ Entregado: ' + (fila.cliente || fila.direccion), ()=>restaurarEntrega(reg.cuando));
+  // 2) quitarlo de la ruta que se está mostrando
+  const nueva = orden.filter((_,j)=>j!==i);
+  // si era la primera parada, ahora estás ahí: la ruta restante parte de ese punto
+  if(conGPS && i===1) nueva[0] = {lat:p.lat, lon:p.lon, etiqueta:'Tu ubicación (última entrega)', nombre:p.etiqueta};
+  const quedan = nueva.filter((q,j)=>!q.regreso && !(conGPS && j===0));
+  const mia = ++verRuta;
+  ultima = {orden:nueva, perfil, conGPS};
+  if(!quedan.length){
+    capa.clearLayers(); $('cardResultado').style.display = 'none'; ultima = null;
+    estado('🎉 ¡Todas las paradas fueron entregadas!', 'ok');
+    $('cardEntregados').scrollIntoView({behavior:'smooth'});
+    return;
+  }
+  const tr = await trazar(nueva, perfil);
+  if(mia!==verRuta) return;
+  mostrar(nueva, tr, perfil, conGPS, true);
+  if(abierto && paradasNav.length){
+    idxNav = actualId===id ? Math.min(idxPrev, paradasNav.length-1) : Math.max(0, paradasNav.findIndex(q=>q.id===actualId));
+    $('panelWaze').style.display = 'block'; renderWaze();
+  }
+}
+function restaurarEntrega(cuando){
+  const k = entregados.findIndex(e=>e.cuando===cuando);
+  if(k<0) return;
+  if(paradasForm.filter(s=>s.direccion.trim()).length >= MAX){
+    estado(`Ya tienes ${MAX} paradas pendientes. Quita una para restaurar esta.`, 'err'); return;
+  }
+  const [e] = entregados.splice(k,1); guardarEntregados(); renderEntregados();
+  const fila = {...e}; const pos = fila.pos||0; delete fila.cuando; delete fila.pos; delete fila.lat; delete fila.lon;
+  // quitar la fila vacía de relleno
+  if(paradasForm.length===1 && !paradasForm[0].direccion.trim() && !paradasForm[0].cliente.trim()) paradasForm = [];
+  if(paradasForm.length>=MAX){ const v = paradasForm.findIndex(s=>!s.direccion.trim()); if(v>=0) paradasForm.splice(v,1); }
+  paradasForm.splice(Math.min(pos, paradasForm.length), 0, {...vacia(), ...fila});
+  guardarParadas(); renderParadas();
+  $('toastEnt').style.display = 'none';
+  organizar(ultimoGPS);
+}
+$('btnBorrarEnt').addEventListener('click', ()=>{
+  if(!confirm('¿Borrar el historial de entregados?')) return;
+  entregados = []; guardarEntregados(); renderEntregados();
+});
+$('wzEnt').addEventListener('click', ()=>{
+  const p = paradasNav[idxNav];
+  if(p && !p.regreso && p.id) marcarEntregado(p.id);
+});
+renderEntregados();
 
 /* ---------- flujo principal ---------- */
 let ocupado=false;
@@ -673,7 +790,7 @@ async function organizar(usarGPS){
   if(ocupado) return;
   const vistos = new Set();
   const lineas = paradasForm
-    .map(s=>({cliente:s.cliente.trim(), telefono:s.telefono.trim(), direccion:s.direccion.trim(), precio:s.precio.trim(), pago:s.pago, moneda:s.moneda}))
+    .map(s=>({cliente:s.cliente.trim(), telefono:s.telefono.trim(), direccion:s.direccion.trim(), precio:s.precio.trim(), pago:s.pago, moneda:s.moneda, id:s.id}))
     .filter(s=>s.direccion)
     .filter(s=>{ const k=[s.cliente,s.telefono,s.direccion,s.precio,s.pago,s.moneda].join('|').toLowerCase(); if(vistos.has(k)) return false; vistos.add(k); return true; });
   $('fallos').textContent='';
@@ -682,6 +799,7 @@ async function organizar(usarGPS){
   if(!navigator.onLine) return estado('Sin internet. Conéctate a datos o Wi‑Fi para buscar direcciones y calcular la ruta.', 'err');
   if(!usarGPS && lineas.length<2) return estado('Sin GPS necesitas al menos 2 direcciones.', 'err');
   const perfil = $('vehiculo').value;
+  ultimoGPS = usarGPS; verRuta++;
   ocupado=true; $('btnGPS').disabled=$('btnSinGPS').disabled=true;
   try{
     let origen=null;
@@ -695,7 +813,7 @@ async function organizar(usarGPS){
       estado(`Buscando direcciones… ${i+1}/${lineas.length}`);
       const enCache = !!cacheGet(lineas[i].direccion);
       const g = await geocodificar(lineas[i].direccion);
-      if(g) ok.push({...g, etiqueta:lineas[i].direccion, cliente:lineas[i].cliente, telefono:lineas[i].telefono, precio:lineas[i].precio, pago:lineas[i].pago, moneda:lineas[i].moneda});
+      if(g) ok.push({...g, etiqueta:lineas[i].direccion, cliente:lineas[i].cliente, telefono:lineas[i].telefono, precio:lineas[i].precio, pago:lineas[i].pago, moneda:lineas[i].moneda, id:lineas[i].id});
       else fallos.push((lineas[i].cliente ? lineas[i].cliente + ' – ' : '') + lineas[i].direccion);
       if(!enCache && i<lineas.length-1) await sleep(1100); // límite de Nominatim
     }
@@ -709,7 +827,7 @@ async function organizar(usarGPS){
     const D = await matrizTiempos(nodos, perfil);
     const idx = optimizar(D);
     const orden = idx.map(i=>nodos[i]);
-    if($('regreso').checked) orden.push({...orden[0], etiqueta:'Regreso al punto de partida', regreso:true, cliente:'', telefono:'', precio:'', pago:'', moneda:'NIO'});
+    if($('regreso').checked) orden.push({...orden[0], etiqueta:'Regreso al punto de partida', regreso:true, cliente:'', telefono:'', precio:'', pago:'', moneda:'NIO', id:undefined});
     estado('Trazando la ruta…');
     const tr = await trazar(orden, perfil);
     mostrar(orden, tr, perfil, !!origen);
